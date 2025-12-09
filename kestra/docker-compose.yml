@@ -1,0 +1,31 @@
+version: "3"
+services:
+  kestra:
+    image: kestra/kestra:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./flows:/app/flows
+      - kestra-data:/app/storage
+    environment:
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://postgres:5432/kestra
+        kestra:
+          server:
+            basic-auth:
+              enabled: false
+  
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: kestra
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: kestra
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  kestra-data:
+  postgres-data:

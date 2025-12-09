@@ -1,0 +1,26 @@
+id: github-collector
+namespace: contextkeeper
+
+tasks:
+  - id: fetch-commits
+    type: io.kestra.plugin.git.Clone
+    url: https://github.com/kestra-io/kestra
+    branch: main
+  
+  - id: process-commits
+    type: io.kestra.plugin.scripts.python.Script
+    inputFiles:
+        data_collectors.py: |
+             # (Content of data_collectors.py will be needed here or accessed via shared storage in real setup)
+             # For this prototype we assume the script calls the local python environment or Docker container
+            import sys
+            print("Processing commits...")
+    script: |
+      python -m pip install requests
+      print("Fetching GitHub data...")
+      # call logic
+
+triggers:
+  - id: schedule
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: "0 */6 * * *"

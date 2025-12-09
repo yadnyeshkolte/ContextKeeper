@@ -5,38 +5,98 @@
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.app-container {
+    font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+    color: #333;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.app-header {
+    margin-bottom: 2rem;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.app-header h1 {
+    font-size: 2.5rem;
+    background: linear-gradient(45deg, #646cff, #a855f7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
 }
 
-.card {
-  padding: 2em;
+nav button {
+    background: transparent;
+    border: none;
+    font-size: 1rem;
+    margin: 0 10px;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
 }
 
-.read-the-docs {
-  color: #888;
+nav button.active {
+    border-bottom: 2px solid #646cff;
+    color: #646cff;
+}
+
+.search-section {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 2rem;
+}
+
+.search-input {
+    padding: 10px 15px;
+    width: 100%;
+    max-width: 500px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
+.search-button {
+    padding: 10px 20px;
+    background-color: #646cff;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.search-button:disabled {
+    background-color: #ccc;
+}
+
+.result-section {
+    text-align: left;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.result-card, .meta-card {
+    background: #f9f9f9;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.tags {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.tag {
+    background: #e0e7ff;
+    color: #4338ca;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.9rem;
 }

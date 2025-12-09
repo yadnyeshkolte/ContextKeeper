@@ -1,0 +1,13 @@
+id: knowledge-graph-builder
+namespace: contextkeeper
+
+tasks:
+  - id: build-connections
+    type: io.kestra.plugin.scripts.python.Script
+    script: |
+      print("Building knowledge graph...")
+
+triggers:
+  - id: daily-rebuild
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: "0 2 * * *"
