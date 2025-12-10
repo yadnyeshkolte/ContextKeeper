@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, Spinner, Alert, Badge } from 'react-bootstrap';
 import ForceGraph2D from 'react-force-graph-2d';
 
@@ -33,21 +33,27 @@ interface KnowledgeGraphProps {
     branch: string;
 }
 
+// Module-level cache that persists across component mounts/unmounts
+const graphCache = new Map<string, GraphData>();
+
 const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ repository, branch }) => {
     const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const lastFetchedKey = useRef<string>('');
 
     useEffect(() => {
         // Create a unique key for this repository + branch combination
         const currentKey = `${repository}:${branch}`;
 
-        // Only fetch if we haven't already fetched for this combination
-        if (lastFetchedKey.current === currentKey) {
+        // Check if we have cached data for this key
+        const cachedData = graphCache.get(currentKey);
+        if (cachedData) {
+            setGraphData(cachedData);
+            setLoading(false);
             return;
         }
 
+        // No cached data, fetch from API
         setLoading(true);
         setError(null);
 
@@ -55,8 +61,8 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ repository, branch }) =
             .then(res => res.json())
             .then((data: GraphData) => {
                 setGraphData(data);
+                graphCache.set(currentKey, data); // Cache the data
                 setLoading(false);
-                lastFetchedKey.current = currentKey;
             })
             .catch(err => {
                 console.error('Error fetching knowledge graph:', err);
@@ -64,6 +70,7 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ repository, branch }) =
                 setLoading(false);
             });
     }, [repository, branch]);
+
 
     // Color mapping for different node types
     const getNodeColor = (node: GraphNode) => {

@@ -33,7 +33,7 @@ function App() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'query' | 'graph'>('query');
-  const [repository, setRepository] = useState<string>('yadnyeshkolte/ContextKeeper');
+  const [repository, setRepository] = useState<string>('');
   const [branch, setBranch] = useState<string>('main');
   const [hasUpdates, setHasUpdates] = useState<boolean>(false);
   const [updateMessage, setUpdateMessage] = useState<string>('');

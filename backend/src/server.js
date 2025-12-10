@@ -34,7 +34,7 @@ const Decision = mongoose.model('Decision', DecisionSchema);
 // Configuration Endpoint - Returns default repository settings
 app.get('/api/config', (req, res) => {
     res.json({
-        defaultRepository: process.env.GITHUB_REPO || 'yadnyeshkolte/ContextKeeper',
+        defaultRepository: process.env.GITHUB_REPO,
         defaultBranch: 'main',
         apiVersion: '1.0.0'
     });
@@ -84,11 +84,27 @@ app.post('/api/query', async (req, res) => {
     });
 });
 
-// Knowledge Graph Endpoint - Now uses real data from knowledge_graph_builder.py
+// In-memory cache for knowledge graph data
+const knowledgeGraphCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
+
+// Knowledge Graph Endpoint - Now uses real data from knowledge_graph_builder.py with caching
 app.get('/api/knowledge-graph', async (req, res) => {
-    const { repository, branch } = req.query;
+    const { repository, branch, noCache } = req.query;
     const repoName = repository || process.env.GITHUB_REPO;
     const branchName = branch || 'main';
+    const cacheKey = `${repoName}:${branchName}`;
+
+    // Check cache first (unless noCache is specified)
+    if (noCache !== 'true') {
+        const cached = knowledgeGraphCache.get(cacheKey);
+        if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+            console.log(`Knowledge Graph: Serving from cache for ${cacheKey}`);
+            return res.json(cached.data);
+        }
+    }
+
+    console.log(`Knowledge Graph: Building graph for ${cacheKey}`);
 
     // Call Python knowledge graph builder script
     const args = [path.join(__dirname, '../scripts/knowledge_graph_builder.py')];
@@ -121,6 +137,13 @@ app.get('/api/knowledge-graph', async (req, res) => {
         }
         try {
             const result = JSON.parse(dataString);
+
+            // Cache the result
+            knowledgeGraphCache.set(cacheKey, {
+                data: result,
+                timestamp: Date.now()
+            });
+
             res.json(result);
         } catch (e) {
             console.error('Failed to parse knowledge graph output:', e);
@@ -176,6 +199,19 @@ app.post('/api/sync-repo', async (req, res) => {
         try {
             const result = JSON.parse(dataString);
             console.log('Repository sync successful:', result);
+
+            // Clear all knowledge graph cache entries for this repository
+            let clearedCount = 0;
+            for (const key of knowledgeGraphCache.keys()) {
+                if (key.startsWith(`${repoName}:`)) {
+                    knowledgeGraphCache.delete(key);
+                    clearedCount++;
+                }
+            }
+            if (clearedCount > 0) {
+                console.log(`Cleared ${clearedCount} knowledge graph cache entries for ${repoName}`);
+            }
+
             res.json({
                 success: true,
                 ...result
@@ -231,6 +267,14 @@ app.post('/api/sync-data', async (req, res) => {
         try {
             const result = JSON.parse(dataString);
             console.log('Data sync successful:', result);
+
+            // Clear knowledge graph cache for this repository/branch
+            const cacheKey = `${repoName}:${branchName}`;
+            if (knowledgeGraphCache.has(cacheKey)) {
+                knowledgeGraphCache.delete(cacheKey);
+                console.log(`Cleared knowledge graph cache for ${cacheKey}`);
+            }
+
             res.json({
                 success: true,
                 ...result
