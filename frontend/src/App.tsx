@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './App.css';
 import KnowledgeGraph from './components/KnowledgeGraph';
+import SyncStatus from './components/SyncStatus';
 
 interface Source {
   type: string;
@@ -8,11 +9,19 @@ interface Source {
   title?: string;
 }
 
+interface TimelineEvent {
+  date: string;
+  event: string;
+  url: string;
+}
+
 interface QueryResult {
   answer: string;
   sources: Source[];
   relatedPeople: string[];
-  timeline: any[]; // Define more specific type if needed
+  timeline: TimelineEvent[];
+  context_count?: number;
+  results_found?: number;
 }
 
 function App() {
@@ -54,6 +63,7 @@ function App() {
       <main className="app-main">
         {activeTab === 'query' && (
           <>
+            <SyncStatus />
             <div className="search-section">
               <input
                 type="text"
@@ -83,7 +93,9 @@ function App() {
                     <ul>
                       {result.sources && result.sources.map((s, i) => (
                         <li key={i}>
-                          <a href={s.link} target="_blank" rel="noopener noreferrer">[{s.type}] {s.title || 'Source'}</a>
+                          <a href={s.link} target="_blank" rel="noopener noreferrer">
+                            <span className="source-type">[{s.type}]</span> {s.title || 'Source'}
+                          </a>
                         </li>
                       ))}
                       {(!result.sources || result.sources.length === 0) && <li>No specific sources found.</li>}
@@ -96,6 +108,25 @@ function App() {
                       {(!result.relatedPeople || result.relatedPeople.length === 0) && <span>No experts identified</span>}
                     </div>
                   </div>
+                  {result.timeline && result.timeline.length > 0 && (
+                    <div className="meta-card timeline-card">
+                      <h3>📅 Timeline</h3>
+                      <div className="timeline">
+                        {result.timeline.map((event, i) => (
+                          <div key={i} className="timeline-item">
+                            <div className="timeline-date">
+                              {new Date(event.date).toLocaleDateString()}
+                            </div>
+                            <div className="timeline-event">
+                              <a href={event.url} target="_blank" rel="noopener noreferrer">
+                                {event.event}
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

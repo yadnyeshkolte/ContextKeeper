@@ -95,6 +95,95 @@ app.post('/api/context/file', (req, res) => {
     });
 });
 
+// GitHub Collection Endpoint
+app.post('/api/collect/github', async (req, res) => {
+    console.log('Triggering GitHub data collection...');
+
+    const pythonProcess = spawn('python', [
+        path.join(__dirname, '../scripts/github_collector.py')
+    ]);
+
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.log(`GitHub Collector: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            console.error('GitHub collection failed:', errorString);
+            return res.status(500).json({
+                error: 'Failed to collect GitHub data',
+                details: errorString
+            });
+        }
+        try {
+            const result = JSON.parse(dataString);
+            console.log('GitHub collection successful:', result);
+            res.json({
+                success: true,
+                ...result
+            });
+        } catch (e) {
+            console.error('Failed to parse GitHub collector output:', e);
+            res.json({
+                success: true,
+                message: 'GitHub data collected but response parsing failed',
+                raw: dataString
+            });
+        }
+    });
+});
+
+// Status Endpoint - Check ChromaDB status
+app.get('/api/status', async (req, res) => {
+    // Call Python script to check ChromaDB status
+    const pythonProcess = spawn('python', [
+        '-c',
+        `
+import chromadb
+import json
+try:
+    client = chromadb.PersistentClient(path="./chroma_db")
+    collection = client.get_or_create_collection("context")
+    count = collection.count()
+    print(json.dumps({"count": count, "status": "ok"}))
+except Exception as e:
+    print(json.dumps({"count": 0, "status": "error", "error": str(e)}))
+`
+    ], { cwd: path.join(__dirname, '..') });
+
+    let dataString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+    });
+
+    pythonProcess.on('close', (code) => {
+        try {
+            const result = JSON.parse(dataString);
+            res.json({
+                chromadb: result,
+                mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+                timestamp: new Date().toISOString()
+            });
+        } catch (e) {
+            res.json({
+                chromadb: { count: 0, status: 'error' },
+                mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+                timestamp: new Date().toISOString()
+            });
+        }
+    });
+});
+
+
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });

@@ -2,60 +2,161 @@ import sys
 import os
 import json
 import chromadb
-# Google generative AI SDK (assuming google-generativeai package)
-import google.generativeai as genai
+from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
+from sentence_transformers import SentenceTransformer
+from datetime import datetime
 
 load_dotenv()
 
 # Setup
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY")
+if not HUGGINGFACE_API_KEY:
+     # Fallback or warning - for now just print to stderr
+     print("Warning: HUGGINGFACE_API_KEY not found in environment", file=sys.stderr)
 
 class ContextRAG:
     def __init__(self):
         self.chroma_client = chromadb.PersistentClient(path="./chroma_db")
         self.collection = self.chroma_client.get_or_create_collection("context")
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.client = InferenceClient(api_key=HUGGINGFACE_API_KEY)
+        self.model_id = "meta-llama/Llama-3.2-3B-Instruct"
+        
+        # Initialize embedding model for better query matching
+        print("Loading embedding model...", file=sys.stderr)
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        print("Embedding model loaded!", file=sys.stderr)
 
     def query(self, question: str):
-        # 1. Search similar contexts (Mock embedding search if no real embeddings)
-        # In a real scenario, you'd embed the question first
-        results = self.collection.query(
-            query_texts=[question],
-            n_results=5
-        )
-        
-        # 3. Build context
-        context_text = "\n".join([doc for sublist in results['documents'] for doc in sublist]) if results['documents'] else "No context found."
+        try:
+            # Check if ChromaDB has any data
+            count = self.collection.count()
+            print(f"ChromaDB contains {count} documents", file=sys.stderr)
+            
+            if count == 0:
+                return json.dumps({
+                    "answer": "No context data available. Please run the GitHub collector first to populate the database with your repository data.",
+                    "sources": [],
+                    "relatedPeople": [],
+                    "timeline": [],
+                    "status": "empty_db"
+                })
+            
+            # 1. Generate embedding for the question
+            print("Generating query embedding...", file=sys.stderr)
+            query_embedding = self.embedding_model.encode([question]).tolist()[0]
+            
+            # 2. Search similar contexts using embeddings
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=min(5, count)
+            )
+            
+            # 3. Extract metadata and build context
+            context_text = ""
+            sources = []
+            people = set()
+            timeline = []
+            
+            if results['documents'] and results['documents'][0]:
+                for i, doc in enumerate(results['documents'][0]):
+                    context_text += f"\n--- Context {i+1} ---\n{doc}\n"
+                    
+                    # Extract metadata
+                    if results['metadatas'] and results['metadatas'][0] and i < len(results['metadatas'][0]):
+                        metadata = results['metadatas'][0][i]
+                        
+                        # Add source
+                        if metadata.get('url'):
+                            sources.append({
+                                "type": metadata.get('type', 'unknown'),
+                                "link": metadata['url'],
+                                "title": f"{metadata.get('type', 'Source').title()} - {metadata.get('author', 'Unknown')}"
+                            })
+                        
+                        # Add person
+                        if metadata.get('author'):
+                            people.add(f"@{metadata['author']}")
+                        
+                        # Add timeline event
+                        if metadata.get('date'):
+                            try:
+                                timeline.append({
+                                    "date": metadata['date'],
+                                    "event": f"{metadata.get('type', 'Event')} by {metadata.get('author', 'Unknown')}",
+                                    "url": metadata.get('url', '#')
+                                })
+                            except:
+                                pass
+            else:
+                context_text = "No relevant context found for this question."
 
-        # 4. Query Gemini
-        prompt = f"""Context from codebase:
+            # 4. Query Hugging Face using chat completion
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You are ContextKeeper, an AI assistant that helps answer questions about codebases and development context. Provide detailed, structured answers based on the context provided. If the context doesn't contain enough information, say so clearly."
+                },
+                {
+                    "role": "user",
+                    "content": f"""Context from GitHub repository:
 {context_text}
 
 Question: {question}
 
-Provide a detailed answer with:
+Based on the context above, provide a detailed answer. Focus on:
 1. Direct answer to the question
-2. Links to relevant sources
-3. People involved
-4. Timeline
-"""
-        response = self.model.generate_content(prompt)
-        
-        # Return structured JSON for the API
-        return json.dumps({
-            "answer": response.text,
-            "sources": [{"type": "db", "link": "#", "title": "Context Source"}],
-            "relatedPeople": ["@detected_user"], # This would be parsed from context in real app
-            "timeline": []
-        })
+2. Relevant technical details from the context
+3. Any decisions or reasoning mentioned
+4. Key people or contributors involved"""
+                }
+            ]
+            
+            print("Querying Hugging Face model...", file=sys.stderr)
+            response = self.client.chat_completion(
+                messages=messages,
+                model=self.model_id,
+                max_tokens=1024,
+                temperature=0.7
+            )
+            
+            # Extract the response text
+            answer_text = response.choices[0].message.content
+            
+            # Sort timeline by date (most recent first)
+            timeline.sort(key=lambda x: x['date'], reverse=True)
+            
+            # Return structured JSON for the API
+            return json.dumps({
+                "answer": answer_text,
+                "sources": sources[:5],  # Limit to top 5 sources
+                "relatedPeople": list(people)[:10],  # Limit to 10 people
+                "timeline": timeline[:10],  # Limit to 10 timeline events
+                "context_count": count,
+                "results_found": len(results['documents'][0]) if results['documents'] else 0
+            })
+        except Exception as e:
+            print(f"Error in query: {str(e)}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            return json.dumps({
+                "answer": f"Error processing query: {str(e)}",
+                "sources": [],
+                "relatedPeople": [],
+                "timeline": [],
+                "error": str(e)
+            })
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        q = sys.argv[1]
-        rag = ContextRAG()
-        print(rag.query(q))
+        try:
+            q = sys.argv[1]
+            rag = ContextRAG()
+            print(rag.query(q))
+        except Exception as e:
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            print(json.dumps({"error": str(e), "answer": f"Failed to initialize RAG engine: {str(e)}"}))
     else:
         print(json.dumps({"error": "No question provided"}))
+

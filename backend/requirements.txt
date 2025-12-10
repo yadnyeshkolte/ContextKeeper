@@ -1,4 +1,7 @@
 chromadb
-google-generativeai
+huggingface_hub
 python-dotenv
+PyGithub
+sentence-transformers
+python-dateutil
 requests
