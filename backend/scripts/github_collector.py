@@ -62,11 +62,20 @@ class GitHubCollector:
                 
                 for commit in commits:
                     try:
+                        # Use GitHub username (login) for consistency, fallback to Git author name
+                        author_name = "Unknown"
+                        if commit.author and commit.author.login:
+                            # Prefer GitHub username for consistency
+                            author_name = commit.author.login
+                        elif commit.commit.author and commit.commit.author.name:
+                            # Fallback to Git author name
+                            author_name = commit.commit.author.name
+                        
                         commit_data = {
                             "type": "commit",
                             "sha": commit.sha,
                             "message": commit.commit.message,
-                            "author": commit.commit.author.name if commit.commit.author else "Unknown",
+                            "author": author_name,
                             "date": commit.commit.author.date.isoformat() if commit.commit.author else None,
                             "url": commit.html_url,
                             "files_changed": [f.filename for f in commit.files] if commit.files else []
@@ -265,7 +274,7 @@ class GitHubCollector:
         all_data = []
         
         # Collect commits
-        commits = self.collect_commits(max_commits=100)
+        commits = self.collect_commits(max_commits=200)
         all_data.extend(commits)
         
         # Collect pull requests

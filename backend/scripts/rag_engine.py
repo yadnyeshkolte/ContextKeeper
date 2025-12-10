@@ -60,10 +60,10 @@ class ContextRAG:
             print("Generating query embedding...", file=sys.stderr)
             query_embedding = self.embedding_model.encode([question]).tolist()[0]
             
-            # 2. Search similar contexts using embeddings
+            # 2. Search similar contexts using embeddings - increased for better accuracy
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=min(5, count)
+                n_results=min(15, count)  # Increased from 5 to 15 for better context
             )
             
             # 3. Extract metadata and build context
@@ -88,9 +88,12 @@ class ContextRAG:
                                 "title": f"{metadata.get('type', 'Source').title()} - {metadata.get('author', 'Unknown')}"
                             })
                         
-                        # Add person
+                        # Add person with normalization (case-insensitive deduplication)
                         if metadata.get('author'):
-                            people.add(f"@{metadata['author']}")
+                            # Normalize author name to lowercase for deduplication
+                            author = metadata['author']
+                            # Add with @ prefix and original casing
+                            people.add(f"@{author}")
                         
                         # Add timeline event
                         if metadata.get('date'):
@@ -140,12 +143,20 @@ Based on the context above, provide a detailed answer. Focus on:
             # Sort timeline by date (most recent first)
             timeline.sort(key=lambda x: x['date'], reverse=True)
             
+            # Deduplicate people list (case-insensitive)
+            people_dict = {}
+            for person in people:
+                person_lower = person.lower()
+                if person_lower not in people_dict:
+                    people_dict[person_lower] = person
+            deduplicated_people = list(people_dict.values())
+            
             # Return structured JSON for the API
             return json.dumps({
                 "answer": answer_text,
-                "sources": sources[:5],  # Limit to top 5 sources
-                "relatedPeople": list(people)[:10],  # Limit to 10 people
-                "timeline": timeline[:10],  # Limit to 10 timeline events
+                "sources": sources[:10],  # Increased limit for better coverage
+                "relatedPeople": deduplicated_people[:10],  # Deduplicated people
+                "timeline": timeline[:20],  # Increased from 10 to 20 for better coverage
                 "context_count": count,
                 "results_found": len(results['documents'][0]) if results['documents'] else 0
             })

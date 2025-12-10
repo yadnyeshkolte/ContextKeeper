@@ -32,6 +32,24 @@ class KnowledgeGraphBuilder:
         self.people = set()
         self.modules = set()
         self.decisions = set()
+        
+        # Author normalization mapping (lowercase -> original casing)
+        self.author_map = {}
+    
+    def normalize_author(self, author: str) -> str:
+        """Normalize author name to handle case variations and return consistent casing"""
+        if not author or author == 'Unknown':
+            return None
+        
+        author_lower = author.lower()
+        
+        # If we've seen this author before (case-insensitive), use the stored version
+        if author_lower in self.author_map:
+            return self.author_map[author_lower]
+        
+        # Otherwise, store this version
+        self.author_map[author_lower] = author
+        return author
     
     def extract_mentions(self, text: str) -> Set[str]:
         """Extract @mentions from text"""
@@ -121,10 +139,13 @@ class KnowledgeGraphBuilder:
             
             # Process each document
             for i, (doc, metadata) in enumerate(zip(results['documents'], results['metadatas'])):
-                author = metadata.get('author', 'Unknown')
+                raw_author = metadata.get('author', 'Unknown')
+                
+                # Normalize author name to handle case variations
+                author = self.normalize_author(raw_author)
                 
                 # Add person node
-                if author and author != 'Unknown':
+                if author:
                     self.people.add(author)
                 
                 # Extract modules
@@ -136,7 +157,7 @@ class KnowledgeGraphBuilder:
                 self.decisions.update(decisions)
                 
                 # Build relationships
-                if author and author != 'Unknown':
+                if author:
                     for module in modules:
                         person_to_modules[author].add(module)
                     for decision in decisions:
