@@ -1,0 +1,13 @@
+id: slack-collector
+namespace: contextkeeper
+
+tasks:
+  - id: fetch-messages
+    type: io.kestra.plugin.scripts.python.Script
+    script: |
+      print("Fetching Slack messages...")
+
+triggers:
+  - id: schedule
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: "0 */4 * * *"
