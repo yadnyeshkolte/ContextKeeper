@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import './App.css';
 import KnowledgeGraph from './components/KnowledgeGraph';
 import SyncStatus from './components/SyncStatus';
@@ -83,7 +84,7 @@ function App() {
                 <div className="result-card">
                   <h2>Answer</h2>
                   <div className="answer-text">
-                    {result.answer.split('\n').map((line, i) => <p key={i}>{line}</p>)}
+                    <ReactMarkdown>{result.answer}</ReactMarkdown>
                   </div>
                 </div>
 

@@ -19,12 +19,30 @@ class SlackCollector:
         self.slack_channels = os.getenv("SLACK_CHANNELS", "").split(",")
         
         if not self.slack_token:
-            raise ValueError("SLACK_TOKEN not found in environment variables")
+            raise ValueError("SLACK_TOKEN not found in environment variables. Please add it to your .env file.")
         if not self.slack_channels or self.slack_channels == ['']:
-            raise ValueError("SLACK_CHANNELS not found in environment variables")
+            raise ValueError("SLACK_CHANNELS not found in environment variables. Please add comma-separated channel names to your .env file.")
+        
+        # Validate token format
+        if not self.slack_token.startswith(('xoxb-', 'xoxp-')):
+            print("Warning: SLACK_TOKEN should start with 'xoxb-' (bot token) or 'xoxp-' (user token)", file=sys.stderr)
         
         # Initialize Slack client
+        print(f"Initializing Slack client with token: {self.slack_token[:10]}...", file=sys.stderr)
         self.client = WebClient(token=self.slack_token)
+        
+        # Test Slack connection
+        try:
+            auth_test = self.client.auth_test()
+            print(f"✓ Slack authentication successful!", file=sys.stderr)
+            print(f"  Bot name: {auth_test.get('user', 'Unknown')}", file=sys.stderr)
+            print(f"  Team: {auth_test.get('team', 'Unknown')}", file=sys.stderr)
+        except SlackApiError as e:
+            error_msg = e.response.get('error', 'Unknown error')
+            print(f"✗ Slack authentication failed: {error_msg}", file=sys.stderr)
+            if error_msg == 'invalid_auth':
+                raise ValueError("Invalid Slack token. Please check your SLACK_TOKEN in .env file.")
+            raise
         
         # Get repository name for ChromaDB path and sanitize it
         # ChromaDB collection names must match [a-zA-Z0-9._-] and cannot contain '/'
@@ -48,17 +66,36 @@ class SlackCollector:
             # Remove # if present
             channel_name = channel_name.strip().lstrip('#')
             
+            print(f"Looking for channel: '{channel_name}'", file=sys.stderr)
+            
             # List all channels
             result = self.client.conversations_list(types="public_channel,private_channel")
             
-            for channel in result["channels"]:
+            # Debug: Print all available channels
+            available_channels = [ch["name"] for ch in result.get("channels", [])]
+            print(f"Available channels: {', '.join(available_channels)}", file=sys.stderr)
+            
+            for channel in result.get("channels", []):
                 if channel["name"] == channel_name:
+                    print(f"Found channel '{channel_name}' with ID: {channel['id']}", file=sys.stderr)
                     return channel["id"]
             
-            print(f"Warning: Channel '{channel_name}' not found", file=sys.stderr)
+            print(f"Warning: Channel '{channel_name}' not found in available channels", file=sys.stderr)
+            print(f"Please check that:", file=sys.stderr)
+            print(f"  1. The channel name is correct (without #)", file=sys.stderr)
+            print(f"  2. Your bot has been invited to the channel", file=sys.stderr)
+            print(f"  3. The channel is not archived", file=sys.stderr)
             return None
         except SlackApiError as e:
-            print(f"Error getting channel ID: {e.response['error']}", file=sys.stderr)
+            error_msg = e.response.get('error', 'Unknown error')
+            print(f"Slack API Error getting channel ID: {error_msg}", file=sys.stderr)
+            if error_msg == 'invalid_auth':
+                print(f"Invalid Slack token. Please check your SLACK_TOKEN in .env file", file=sys.stderr)
+            elif error_msg == 'missing_scope':
+                print(f"Missing OAuth scope. Your bot needs 'channels:read' and 'groups:read' scopes", file=sys.stderr)
+            return None
+        except Exception as e:
+            print(f"Unexpected error getting channel ID: {e}", file=sys.stderr)
             return None
     
     def collect_channel_messages(self, channel_name: str, days_back: int = 30) -> List[Dict[str, Any]]:
