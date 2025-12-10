@@ -33,14 +33,19 @@ const Decision = mongoose.model('Decision', DecisionSchema);
 
 // Query Endpoint (RAG)
 app.post('/api/query', async (req, res) => {
-    const { question } = req.body;
+    const { question, repository } = req.body;
     if (!question) return res.status(400).json({ error: 'Question is required' });
 
-    // Call Python RAG script
-    const pythonProcess = spawn('python', [
-        path.join(__dirname, '../scripts/rag_engine.py'),
-        question
-    ]);
+    // Determine repository name
+    const repoName = repository || process.env.GITHUB_REPO;
+
+    // Call Python RAG script with repository parameter
+    const args = [path.join(__dirname, '../scripts/rag_engine.py'), question];
+    if (repoName) {
+        args.push(repoName);
+    }
+
+    const pythonProcess = spawn('python', args);
 
     let dataString = '';
 
@@ -66,22 +71,45 @@ app.post('/api/query', async (req, res) => {
     });
 });
 
-// Knowledge Graph Endpoint
+// Knowledge Graph Endpoint - Now uses real data from knowledge_graph_builder.py
 app.get('/api/knowledge-graph', async (req, res) => {
-    // Mock data based on user example, in real app this would query Neo4j or complex Mongo aggregation
-    const graphData = {
-        nodes: [
-            { id: "person-mike", group: 1, label: "@mike" },
-            { id: "person-sarah", group: 1, label: "@sarah" },
-            { id: "module-redis", group: 2, label: "Redis Module" },
-            { id: "decision-auth", group: 3, label: "Auth Decision" }
-        ],
-        links: [
-            { source: "person-mike", target: "module-redis", value: 1 },
-            { source: "person-sarah", target: "decision-auth", value: 1 }
-        ]
-    };
-    res.json(graphData);
+    const { repository } = req.query;
+    const repoName = repository || process.env.GITHUB_REPO;
+
+    // Call Python knowledge graph builder script
+    const args = [path.join(__dirname, '../scripts/knowledge_graph_builder.py')];
+    if (repoName) {
+        args.push(repoName);
+    }
+
+    const pythonProcess = spawn('python', args);
+
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.log(`Knowledge Graph Builder: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            console.error('Knowledge graph building failed:', errorString);
+            // Return empty graph on error
+            return res.json({ nodes: [], links: [], error: errorString });
+        }
+        try {
+            const result = JSON.parse(dataString);
+            res.json(result);
+        } catch (e) {
+            console.error('Failed to parse knowledge graph output:', e);
+            res.json({ nodes: [], links: [], error: 'Failed to parse graph data' });
+        }
+    });
 });
 
 // Context for file Endpoint
@@ -98,10 +126,15 @@ app.post('/api/context/file', (req, res) => {
 // GitHub Collection Endpoint
 app.post('/api/collect/github', async (req, res) => {
     console.log('Triggering GitHub data collection...');
+    const { repository } = req.body;
+    const repoName = repository || process.env.GITHUB_REPO;
 
-    const pythonProcess = spawn('python', [
-        path.join(__dirname, '../scripts/github_collector.py')
-    ]);
+    const args = [path.join(__dirname, '../scripts/github_collector.py')];
+    if (repoName) {
+        args.push(repoName);
+    }
+
+    const pythonProcess = spawn('python', args);
 
     let dataString = '';
     let errorString = '';
@@ -141,21 +174,82 @@ app.post('/api/collect/github', async (req, res) => {
     });
 });
 
-// Status Endpoint - Check ChromaDB status
+// Slack Collection Endpoint
+app.post('/api/collect/slack', async (req, res) => {
+    console.log('Triggering Slack data collection...');
+    const { repository } = req.body;
+    const repoName = repository || process.env.GITHUB_REPO;
+
+    const args = [path.join(__dirname, '../scripts/slack_collector.py')];
+    if (repoName) {
+        args.push(repoName);
+    }
+
+    const pythonProcess = spawn('python', args);
+
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.log(`Slack Collector: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            console.error('Slack collection failed:', errorString);
+            return res.status(500).json({
+                error: 'Failed to collect Slack data',
+                details: errorString
+            });
+        }
+        try {
+            const result = JSON.parse(dataString);
+            console.log('Slack collection successful:', result);
+            res.json({
+                success: true,
+                ...result
+            });
+        } catch (e) {
+            console.error('Failed to parse Slack collector output:', e);
+            res.json({
+                success: true,
+                message: 'Slack data collected but response parsing failed',
+                raw: dataString
+            });
+        }
+    });
+});
+
+// Status Endpoint - Check ChromaDB status for specific repository
 app.get('/api/status', async (req, res) => {
+    const { repository } = req.query;
+    const repoName = repository || process.env.GITHUB_REPO || 'default';
+    const repoSafeName = repoName.replace('/', '_');
+    const chromaPath = `./chroma_db_${repoSafeName}`;
+
     // Call Python script to check ChromaDB status
     const pythonProcess = spawn('python', [
         '-c',
         `
 import chromadb
 import json
+import os
 try:
-    client = chromadb.PersistentClient(path="./chroma_db")
-    collection = client.get_or_create_collection("context")
-    count = collection.count()
-    print(json.dumps({"count": count, "status": "ok"}))
+    chroma_path = "${chromaPath}"
+    if os.path.exists(chroma_path):
+        client = chromadb.PersistentClient(path=chroma_path)
+        collection = client.get_or_create_collection("context_${repoSafeName}")
+        count = collection.count()
+        print(json.dumps({"count": count, "status": "ok", "repository": "${repoName}", "path": chroma_path}))
+    else:
+        print(json.dumps({"count": 0, "status": "not_initialized", "repository": "${repoName}", "path": chroma_path}))
 except Exception as e:
-    print(json.dumps({"count": 0, "status": "error", "error": str(e)}))
+    print(json.dumps({"count": 0, "status": "error", "error": str(e), "repository": "${repoName}"}))
 `
     ], { cwd: path.join(__dirname, '..') });
 
@@ -175,7 +269,7 @@ except Exception as e:
             });
         } catch (e) {
             res.json({
-                chromadb: { count: 0, status: 'error' },
+                chromadb: { count: 0, status: 'error', repository: repoName },
                 mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
                 timestamp: new Date().toISOString()
             });

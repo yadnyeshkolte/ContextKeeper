@@ -1,0 +1,246 @@
+import os
+import sys
+import json
+from datetime import datetime
+from typing import List, Dict, Any, Set
+from dotenv import load_dotenv
+import chromadb
+from collections import defaultdict
+import re
+
+load_dotenv()
+
+class KnowledgeGraphBuilder:
+    """Builds a knowledge graph from ChromaDB context data"""
+    
+    def __init__(self, repo_name: str = None):
+        # Get repository name for ChromaDB path and sanitize it
+        # ChromaDB collection names must match [a-zA-Z0-9._-] and cannot contain '/'
+        raw_repo_name = repo_name or os.getenv("GITHUB_REPO", "default")
+        self.repo_name = raw_repo_name.replace("/", "_")
+        
+        # Repository-specific ChromaDB path
+        chroma_path = f"./chroma_db_{self.repo_name}"
+        print(f"Using ChromaDB path: {chroma_path}", file=sys.stderr)
+        
+        self.chroma_client = chromadb.PersistentClient(path=chroma_path)
+        self.collection = self.chroma_client.get_or_create_collection(f"context_{self.repo_name}")
+        
+        # Graph data structures
+        self.nodes = {}
+        self.links = []
+        self.people = set()
+        self.modules = set()
+        self.decisions = set()
+    
+    def extract_mentions(self, text: str) -> Set[str]:
+        """Extract @mentions from text"""
+        if not text:
+            return set()
+        return set(re.findall(r'@(\w+)', text))
+    
+    def extract_modules(self, text: str) -> Set[str]:
+        """Extract module/technology names from text"""
+        if not text:
+            return set()
+        
+        # Common technology keywords
+        tech_keywords = [
+            'redis', 'postgres', 'mongodb', 'mysql', 'elasticsearch',
+            'react', 'vue', 'angular', 'node', 'express', 'django', 'flask',
+            'docker', 'kubernetes', 'aws', 'azure', 'gcp',
+            'graphql', 'rest', 'grpc', 'websocket',
+            'jwt', 'oauth', 'auth0', 'firebase',
+            'webpack', 'vite', 'babel', 'typescript', 'javascript', 'python'
+        ]
+        
+        modules = set()
+        text_lower = text.lower()
+        
+        for keyword in tech_keywords:
+            if keyword in text_lower:
+                modules.add(keyword.capitalize())
+        
+        # Extract file extensions as modules
+        file_patterns = re.findall(r'\.(py|js|ts|jsx|tsx|go|java|rb|php|cpp|c|rs)', text)
+        for ext in file_patterns:
+            modules.add(f"{ext.upper()} Module")
+        
+        return modules
+    
+    def extract_decisions(self, text: str, metadata: Dict) -> List[str]:
+        """Extract decision keywords from text"""
+        if not text:
+            return []
+        
+        decision_keywords = [
+            'decided', 'decision', 'chose', 'choose', 'selected', 'switch',
+            'migrate', 'refactor', 'implement', 'add', 'remove', 'deprecate',
+            'why', 'because', 'reason', 'rationale'
+        ]
+        
+        decisions = []
+        text_lower = text.lower()
+        
+        for keyword in decision_keywords:
+            if keyword in text_lower:
+                # Create a decision node based on type and content
+                doc_type = metadata.get('type', 'unknown')
+                if doc_type == 'pull_request':
+                    decisions.append(f"PR Decision: {metadata.get('url', 'Unknown')}")
+                elif doc_type == 'issue':
+                    decisions.append(f"Issue Decision: {metadata.get('url', 'Unknown')}")
+                elif doc_type == 'commit':
+                    decisions.append(f"Commit Decision: {metadata.get('url', 'Unknown')}")
+                elif doc_type == 'slack_message':
+                    decisions.append(f"Slack Decision: {metadata.get('channel', 'Unknown')}")
+                break  # Only create one decision per document
+        
+        return decisions
+    
+    def build_graph(self) -> Dict[str, Any]:
+        """Build knowledge graph from ChromaDB data"""
+        print("Building knowledge graph...", file=sys.stderr)
+        
+        # Get all documents from ChromaDB
+        try:
+            results = self.collection.get(
+                include=['documents', 'metadatas']
+            )
+            
+            if not results or not results['documents']:
+                print("No documents found in ChromaDB", file=sys.stderr)
+                return {"nodes": [], "links": []}
+            
+            print(f"Processing {len(results['documents'])} documents...", file=sys.stderr)
+            
+            # Track relationships
+            person_to_modules = defaultdict(set)
+            person_to_decisions = defaultdict(set)
+            module_to_decisions = defaultdict(set)
+            
+            # Process each document
+            for i, (doc, metadata) in enumerate(zip(results['documents'], results['metadatas'])):
+                author = metadata.get('author', 'Unknown')
+                
+                # Add person node
+                if author and author != 'Unknown':
+                    self.people.add(author)
+                
+                # Extract modules
+                modules = self.extract_modules(doc)
+                self.modules.update(modules)
+                
+                # Extract decisions
+                decisions = self.extract_decisions(doc, metadata)
+                self.decisions.update(decisions)
+                
+                # Build relationships
+                if author and author != 'Unknown':
+                    for module in modules:
+                        person_to_modules[author].add(module)
+                    for decision in decisions:
+                        person_to_decisions[author].add(decision)
+                
+                for module in modules:
+                    for decision in decisions:
+                        module_to_decisions[module].add(decision)
+            
+            # Create nodes
+            node_id = 0
+            
+            # Add people nodes
+            for person in self.people:
+                self.nodes[f"person-{person}"] = {
+                    "id": f"person-{person}",
+                    "group": 1,
+                    "label": f"@{person}",
+                    "type": "person"
+                }
+            
+            # Add module nodes
+            for module in self.modules:
+                self.nodes[f"module-{module}"] = {
+                    "id": f"module-{module}",
+                    "group": 2,
+                    "label": module,
+                    "type": "module"
+                }
+            
+            # Add decision nodes (limit to top 20)
+            for i, decision in enumerate(list(self.decisions)[:20]):
+                decision_id = f"decision-{i}"
+                self.nodes[decision_id] = {
+                    "id": decision_id,
+                    "group": 3,
+                    "label": decision[:50] + "..." if len(decision) > 50 else decision,
+                    "type": "decision",
+                    "url": decision.split(": ")[1] if ": " in decision else ""
+                }
+            
+            # Create links
+            # Person -> Module
+            for person, modules in person_to_modules.items():
+                for module in modules:
+                    self.links.append({
+                        "source": f"person-{person}",
+                        "target": f"module-{module}",
+                        "value": 1,
+                        "type": "contributed"
+                    })
+            
+            # Person -> Decision
+            for person, decisions in person_to_decisions.items():
+                for i, decision in enumerate(list(decisions)[:20]):
+                    decision_id = f"decision-{list(self.decisions).index(decision)}" if decision in list(self.decisions)[:20] else None
+                    if decision_id:
+                        self.links.append({
+                            "source": f"person-{person}",
+                            "target": decision_id,
+                            "value": 2,
+                            "type": "decided"
+                        })
+            
+            # Module -> Decision
+            for module, decisions in module_to_decisions.items():
+                for decision in decisions:
+                    decision_id = f"decision-{list(self.decisions).index(decision)}" if decision in list(self.decisions)[:20] else None
+                    if decision_id:
+                        self.links.append({
+                            "source": f"module-{module}",
+                            "target": decision_id,
+                            "value": 1,
+                            "type": "related"
+                        })
+            
+            print(f"Graph built: {len(self.nodes)} nodes, {len(self.links)} links", file=sys.stderr)
+            
+            return {
+                "nodes": list(self.nodes.values()),
+                "links": self.links,
+                "stats": {
+                    "people": len(self.people),
+                    "modules": len(self.modules),
+                    "decisions": len(self.decisions)
+                }
+            }
+        
+        except Exception as e:
+            print(f"Error building graph: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            return {"nodes": [], "links": [], "error": str(e)}
+
+if __name__ == "__main__":
+    try:
+        # Get repository name from command line or environment
+        repo_name = sys.argv[1] if len(sys.argv) > 1 else None
+        
+        builder = KnowledgeGraphBuilder(repo_name=repo_name)
+        graph = builder.build_graph()
+        print(json.dumps(graph))
+    except Exception as e:
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        print(json.dumps({"error": str(e), "nodes": [], "links": []}))
+        sys.exit(1)

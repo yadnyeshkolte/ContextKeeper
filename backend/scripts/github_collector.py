@@ -1,9 +1,11 @@
 import os
 import sys
 import json
+import time
 from datetime import datetime
 from typing import List, Dict, Any
 from github import Github
+from github.GithubException import RateLimitExceededException, GithubException
 from dotenv import load_dotenv
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -13,51 +15,82 @@ load_dotenv()
 class GitHubCollector:
     """Collects context from GitHub repository and stores in ChromaDB"""
     
-    def __init__(self):
+    def __init__(self, repo_name: str = None):
         self.github_token = os.getenv("GITHUB_TOKEN")
-        self.github_repo = os.getenv("GITHUB_REPO")
+        self.github_repo = repo_name or os.getenv("GITHUB_REPO")
         
         if not self.github_token:
             raise ValueError("GITHUB_TOKEN not found in environment variables")
         if not self.github_repo:
             raise ValueError("GITHUB_REPO not found in environment variables")
         
-        # Initialize GitHub client
-        self.github = Github(self.github_token)
+        # Initialize GitHub client with retry
+        print(f"Initializing GitHub client for {self.github_repo}...", file=sys.stderr)
+        self.github = Github(self.github_token, per_page=100, retry=3)
         self.repo = self.github.get_repo(self.github_repo)
         
-        # Initialize ChromaDB
-        self.chroma_client = chromadb.PersistentClient(path="./chroma_db")
-        self.collection = self.chroma_client.get_or_create_collection("context")
+        # Repository-specific ChromaDB path
+        self.repo_safe_name = self.github_repo.replace("/", "_")
+        chroma_path = f"./chroma_db_{self.repo_safe_name}"
+        print(f"Using ChromaDB path: {chroma_path}", file=sys.stderr)
+        
+        # Initialize ChromaDB with repository-specific path
+        self.chroma_client = chromadb.PersistentClient(path=chroma_path)
+        self.collection = self.chroma_client.get_or_create_collection(f"context_{self.repo_safe_name}")
         
         # Initialize embedding model
         print("Loading embedding model...", file=sys.stderr)
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         print("Embedding model loaded!", file=sys.stderr)
     
+    def _handle_rate_limit(self, e: RateLimitExceededException):
+        """Handle GitHub API rate limiting"""
+        reset_time = self.github.get_rate_limit().core.reset
+        sleep_time = (reset_time - datetime.now()).total_seconds() + 10
+        print(f"Rate limit exceeded. Sleeping for {sleep_time} seconds...", file=sys.stderr)
+        time.sleep(min(sleep_time, 300))  # Max 5 minutes wait
+    
     def collect_commits(self, max_commits: int = 100) -> List[Dict[str, Any]]:
-        """Fetch recent commits from the repository"""
+        """Fetch recent commits from the repository with retry logic"""
         print(f"Fetching up to {max_commits} commits...", file=sys.stderr)
         commits_data = []
         
-        try:
-            commits = self.repo.get_commits()[:max_commits]
-            
-            for commit in commits:
-                commit_data = {
-                    "type": "commit",
-                    "sha": commit.sha,
-                    "message": commit.commit.message,
-                    "author": commit.commit.author.name if commit.commit.author else "Unknown",
-                    "date": commit.commit.author.date.isoformat() if commit.commit.author else None,
-                    "url": commit.html_url,
-                    "files_changed": [f.filename for f in commit.files] if commit.files else []
-                }
-                commits_data.append(commit_data)
-            
-            print(f"Fetched {len(commits_data)} commits", file=sys.stderr)
-        except Exception as e:
-            print(f"Error fetching commits: {e}", file=sys.stderr)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                commits = self.repo.get_commits()[:max_commits]
+                
+                for commit in commits:
+                    try:
+                        commit_data = {
+                            "type": "commit",
+                            "sha": commit.sha,
+                            "message": commit.commit.message,
+                            "author": commit.commit.author.name if commit.commit.author else "Unknown",
+                            "date": commit.commit.author.date.isoformat() if commit.commit.author else None,
+                            "url": commit.html_url,
+                            "files_changed": [f.filename for f in commit.files] if commit.files else []
+                        }
+                        commits_data.append(commit_data)
+                    except Exception as e:
+                        print(f"Error processing commit {commit.sha}: {e}", file=sys.stderr)
+                        continue
+                
+                print(f"Fetched {len(commits_data)} commits", file=sys.stderr)
+                break
+            except RateLimitExceededException as e:
+                self._handle_rate_limit(e)
+                if attempt == max_retries - 1:
+                    print(f"Failed to fetch commits after {max_retries} attempts", file=sys.stderr)
+            except GithubException as e:
+                print(f"GitHub API error fetching commits: {e}", file=sys.stderr)
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    break
+            except Exception as e:
+                print(f"Unexpected error fetching commits: {e}", file=sys.stderr)
+                break
         
         return commits_data
     
@@ -265,9 +298,14 @@ class GitHubCollector:
 
 if __name__ == "__main__":
     try:
-        collector = GitHubCollector()
+        # Get repository name from command line or environment
+        repo_name = sys.argv[1] if len(sys.argv) > 1 else None
+        
+        collector = GitHubCollector(repo_name=repo_name)
         summary = collector.collect_all()
         print(json.dumps(summary))
     except Exception as e:
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         print(json.dumps({"error": str(e)}), file=sys.stderr)
         sys.exit(1)
