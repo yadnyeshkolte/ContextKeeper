@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import './SyncStatus.css';
+import { Card, Button, Badge, Alert, Spinner, Row, Col } from 'react-bootstrap';
 import BranchSelector from './BranchSelector';
 
 interface SyncStatusData {
@@ -20,6 +20,8 @@ interface SyncResult {
     readme?: number;
     timestamp?: string;
     error?: string;
+    synced_count?: number;
+    total_branches?: number;
 }
 
 interface SyncStatusProps {
@@ -30,9 +32,11 @@ interface SyncStatusProps {
 
 const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => {
     const [status, setStatus] = useState<SyncStatusData | null>(null);
-    const [syncing, setSyncing] = useState(false);
+    const [syncingData, setSyncingData] = useState(false);
+    const [syncingRepo, setSyncingRepo] = useState(false);
     const [lastSync, setLastSync] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
     const fetchStatus = async () => {
         try {
@@ -46,11 +50,12 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
         }
     };
 
-    const triggerSync = async () => {
-        setSyncing(true);
+    const triggerSyncData = async () => {
+        setSyncingData(true);
         setError(null);
+        setSuccessMessage(null);
         try {
-            const res = await fetch('http://localhost:3000/api/collect/github', {
+            const res = await fetch('http://localhost:3000/api/sync-data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ repository, branch })
@@ -59,6 +64,7 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
 
             if (data.success) {
                 setLastSync(data.timestamp || new Date().toISOString());
+                setSuccessMessage(`Synced ${data.total_items || 0} items from ${branch}`);
                 // Refresh status after sync
                 setTimeout(fetchStatus, 1000);
             } else {
@@ -66,9 +72,37 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
             }
         } catch (err) {
             console.error('Sync failed:', err);
-            setError('Failed to sync GitHub data');
+            setError('Failed to sync data');
         } finally {
-            setSyncing(false);
+            setSyncingData(false);
+        }
+    };
+
+    const triggerSyncRepo = async () => {
+        setSyncingRepo(true);
+        setError(null);
+        setSuccessMessage(null);
+        try {
+            const res = await fetch('http://localhost:3000/api/sync-repo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ repository })
+            });
+            const data: SyncResult = await res.json();
+
+            if (data.success) {
+                setLastSync(data.timestamp || new Date().toISOString());
+                setSuccessMessage(`Synced ${data.synced_count || 0} of ${data.total_branches || 0} branches`);
+                // Refresh status after sync
+                setTimeout(fetchStatus, 1000);
+            } else {
+                setError(data.error || 'Repository sync failed');
+            }
+        } catch (err) {
+            console.error('Repository sync failed:', err);
+            setError('Failed to sync repository');
+        } finally {
+            setSyncingRepo(false);
         }
     };
 
@@ -80,70 +114,115 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
     }, [branch, repository]);
 
     return (
-        <div className="sync-status">
-            <BranchSelector
-                repository={repository}
-                selectedBranch={branch}
-                onBranchChange={onBranchChange}
-            />
-            <div className="sync-header">
-                <h3>📊 System Status</h3>
-                <button
-                    onClick={triggerSync}
-                    disabled={syncing}
-                    className="sync-button"
-                >
-                    {syncing ? `🔄 Syncing ${branch}...` : `🔄 Sync ${branch}`}
-                </button>
-            </div>
+        <Card className="mb-4">
+            <Card.Body>
+                <BranchSelector
+                    repository={repository}
+                    selectedBranch={branch}
+                    onBranchChange={onBranchChange}
+                />
 
-            {error && (
-                <div className="sync-error">
-                    ⚠️ {error}
-                </div>
-            )}
-
-            <div className="status-grid">
-                <div className="status-card">
-                    <div className="status-label">ChromaDB Documents</div>
-                    <div className="status-value">
-                        {status?.chromadb?.count || 0}
-                    </div>
-                    <div className="status-indicator">
-                        {status?.chromadb?.status === 'ok' ? '🟢 Connected' : '🔴 Error'}
-                    </div>
-                </div>
-
-                <div className="status-card">
-                    <div className="status-label">MongoDB</div>
-                    <div className="status-value">
-                        {status?.mongodb === 'connected' ? 'Connected' : 'Disconnected'}
-                    </div>
-                    <div className="status-indicator">
-                        {status?.mongodb === 'connected' ? '🟢 Active' : '🔴 Inactive'}
-                    </div>
-                </div>
-
-                <div className="status-card">
-                    <div className="status-label">Last Sync</div>
-                    <div className="status-value">
-                        {lastSync ? new Date(lastSync).toLocaleString() : 'Never'}
-                    </div>
-                    <div className="status-indicator">
-                        {lastSync ? '✅ Synced' : '⏳ Pending'}
+                <div className="d-flex justify-content-between align-items-center mt-3 mb-3">
+                    <h5 className="mb-0">📊 System Status</h5>
+                    <div>
+                        <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={triggerSyncData}
+                            disabled={syncingData || syncingRepo}
+                            className="me-2"
+                        >
+                            {syncingData ? (
+                                <>
+                                    <Spinner animation="border" size="sm" className="me-1" />
+                                    Syncing {branch}...
+                                </>
+                            ) : (
+                                `🔄 Sync Data (${branch})`
+                            )}
+                        </Button>
+                        <Button
+                            variant="success"
+                            size="sm"
+                            onClick={triggerSyncRepo}
+                            disabled={syncingData || syncingRepo}
+                        >
+                            {syncingRepo ? (
+                                <>
+                                    <Spinner animation="border" size="sm" className="me-1" />
+                                    Syncing All Branches...
+                                </>
+                            ) : (
+                                '🔄 Sync Repo (All Branches)'
+                            )}
+                        </Button>
                     </div>
                 </div>
-            </div>
 
-            {syncing && (
-                <div className="sync-progress">
-                    <div className="progress-bar">
-                        <div className="progress-fill"></div>
+                {error && (
+                    <Alert variant="danger" dismissible onClose={() => setError(null)}>
+                        ⚠️ {error}
+                    </Alert>
+                )}
+
+                {successMessage && (
+                    <Alert variant="success" dismissible onClose={() => setSuccessMessage(null)}>
+                        ✅ {successMessage}
+                    </Alert>
+                )}
+
+                <Row className="g-3">
+                    <Col md={4}>
+                        <Card bg="light">
+                            <Card.Body>
+                                <div className="text-muted small">ChromaDB Documents</div>
+                                <h3 className="mb-1">{status?.chromadb?.count || 0}</h3>
+                                <Badge bg={status?.chromadb?.status === 'ok' ? 'success' : 'danger'}>
+                                    {status?.chromadb?.status === 'ok' ? '🟢 Connected' : '🔴 Error'}
+                                </Badge>
+                            </Card.Body>
+                        </Card>
+                    </Col>
+
+                    <Col md={4}>
+                        <Card bg="light">
+                            <Card.Body>
+                                <div className="text-muted small">MongoDB</div>
+                                <h3 className="mb-1">
+                                    {status?.mongodb === 'connected' ? 'Connected' : 'Disconnected'}
+                                </h3>
+                                <Badge bg={status?.mongodb === 'connected' ? 'success' : 'danger'}>
+                                    {status?.mongodb === 'connected' ? '🟢 Active' : '🔴 Inactive'}
+                                </Badge>
+                            </Card.Body>
+                        </Card>
+                    </Col>
+
+                    <Col md={4}>
+                        <Card bg="light">
+                            <Card.Body>
+                                <div className="text-muted small">Last Sync</div>
+                                <h6 className="mb-1">
+                                    {lastSync ? new Date(lastSync).toLocaleString() : 'Never'}
+                                </h6>
+                                <Badge bg={lastSync ? 'success' : 'warning'}>
+                                    {lastSync ? '✅ Synced' : '⏳ Pending'}
+                                </Badge>
+                            </Card.Body>
+                        </Card>
+                    </Col>
+                </Row>
+
+                {(syncingData || syncingRepo) && (
+                    <div className="mt-3 text-center">
+                        <Spinner animation="border" variant="primary" />
+                        <p className="mt-2 text-muted">
+                            {syncingRepo ? 'Fetching and syncing all branches from repository...' : 'Fetching data from GitHub...'}
+                        </p>
                     </div>
-                    <p>Fetching data from GitHub repository...</p>
-                </div>
-            )}
-        </div>
+                )}
+            </Card.Body>
+        </Card>
     );
 };
 

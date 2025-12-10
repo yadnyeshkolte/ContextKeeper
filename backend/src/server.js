@@ -140,9 +140,60 @@ app.post('/api/context/file', (req, res) => {
     });
 });
 
-// GitHub Collection Endpoint
-app.post('/api/collect/github', async (req, res) => {
-    console.log('Triggering GitHub data collection...');
+// Sync Repository Endpoint - Syncs all branches from a repository
+app.post('/api/sync-repo', async (req, res) => {
+    console.log('Triggering repository-wide sync (all branches)...');
+    const { repository } = req.body;
+    const repoName = repository || process.env.GITHUB_REPO;
+
+    if (!repoName) {
+        return res.status(400).json({ error: 'Repository name is required' });
+    }
+
+    const args = [path.join(__dirname, '../scripts/github_collector.py'), '--sync-all-branches', repoName];
+    const pythonProcess = spawn('python', args);
+
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.log(`Repo Sync: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            console.error('Repository sync failed:', errorString);
+            return res.status(500).json({
+                error: 'Failed to sync repository',
+                details: errorString
+            });
+        }
+        try {
+            const result = JSON.parse(dataString);
+            console.log('Repository sync successful:', result);
+            res.json({
+                success: true,
+                ...result
+            });
+        } catch (e) {
+            console.error('Failed to parse repo sync output:', e);
+            res.json({
+                success: true,
+                message: 'Repository synced but response parsing failed',
+                raw: dataString
+            });
+        }
+    });
+});
+
+// Sync Data Endpoint - Syncs data from a specific branch
+app.post('/api/sync-data', async (req, res) => {
+    console.log('Triggering branch-specific data sync...');
     const { repository, branch } = req.body;
     const repoName = repository || process.env.GITHUB_REPO;
     const branchName = branch || 'main';
@@ -166,29 +217,29 @@ app.post('/api/collect/github', async (req, res) => {
 
     pythonProcess.stderr.on('data', (data) => {
         errorString += data.toString();
-        console.log(`GitHub Collector: ${data}`);
+        console.log(`Data Sync: ${data}`);
     });
 
     pythonProcess.on('close', (code) => {
         if (code !== 0) {
-            console.error('GitHub collection failed:', errorString);
+            console.error('Data sync failed:', errorString);
             return res.status(500).json({
-                error: 'Failed to collect GitHub data',
+                error: 'Failed to sync data',
                 details: errorString
             });
         }
         try {
             const result = JSON.parse(dataString);
-            console.log('GitHub collection successful:', result);
+            console.log('Data sync successful:', result);
             res.json({
                 success: true,
                 ...result
             });
         } catch (e) {
-            console.error('Failed to parse GitHub collector output:', e);
+            console.error('Failed to parse data sync output:', e);
             res.json({
                 success: true,
-                message: 'GitHub data collected but response parsing failed',
+                message: 'Data synced but response parsing failed',
                 raw: dataString
             });
         }
@@ -255,48 +306,48 @@ app.get('/api/status', async (req, res) => {
     const { repository, branch } = req.query;
     const repoName = repository || process.env.GITHUB_REPO || 'default';
     const branchName = branch || 'main';
-    const repoSafeName = repoName.replace('/', '_');
-    const branchSafeName = branchName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const chromaPath = `./chroma_db_${repoSafeName}_${branchSafeName}`;
 
-    // Call Python script to check ChromaDB status
-    const pythonProcess = spawn('python', [
-        '-c',
-        `
-import chromadb
-import json
-import os
-try:
-    chroma_path = "${chromaPath}"
-    if os.path.exists(chroma_path):
-        client = chromadb.PersistentClient(path=chroma_path)
-        collection = client.get_or_create_collection("context_${repoSafeName}_${branchSafeName}")
-        count = collection.count()
-        print(json.dumps({"count": count, "status": "ok", "repository": "${repoName}", "branch": "${branchName}", "path": chroma_path}))
-    else:
-        print(json.dumps({"count": 0, "status": "not_initialized", "repository": "${repoName}", "branch": "${branchName}", "path": chroma_path}))
-except Exception as e:
-    print(json.dumps({"count": 0, "status": "error", "error": str(e), "repository": "${repoName}", "branch": "${branchName}"}))
-`
-    ], { cwd: path.join(__dirname, '..') });
+    // Use Python script to check ChromaDB status
+    const args = [
+        path.join(__dirname, '../scripts/github_collector.py'),
+        '--check-db',
+        repoName
+    ];
+    if (branchName) {
+        args.push(branchName);
+    }
+
+    const pythonProcess = spawn('python', args, { cwd: path.join(__dirname, '..') });
 
     let dataString = '';
+    let errorString = '';
 
     pythonProcess.stdout.on('data', (data) => {
         dataString += data.toString();
     });
 
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+    });
+
     pythonProcess.on('close', (code) => {
         try {
-            const result = JSON.parse(dataString);
+            const chromaResult = JSON.parse(dataString);
             res.json({
-                chromadb: result,
+                chromadb: {
+                    count: chromaResult.count || 0,
+                    status: chromaResult.exists ? 'ok' : 'not_initialized',
+                    path: chromaResult.path,
+                    repository: repoName,
+                    branch: branchName
+                },
                 mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
                 timestamp: new Date().toISOString()
             });
         } catch (e) {
+            console.error('Failed to parse status check:', e, errorString);
             res.json({
-                chromadb: { count: 0, status: 'error', repository: repoName },
+                chromadb: { count: 0, status: 'error', repository: repoName, branch: branchName },
                 mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
                 timestamp: new Date().toISOString()
             });
@@ -304,9 +355,9 @@ except Exception as e:
     });
 });
 
-// Branches Endpoint - List available branches for a repository
+// Branches Endpoint - List available branches for a repository (with ChromaDB cache check)
 app.get('/api/branches', async (req, res) => {
-    const { repository } = req.query;
+    const { repository, noCache } = req.query;
     const repoName = repository || process.env.GITHUB_REPO;
 
     if (!repoName) {
@@ -314,6 +365,12 @@ app.get('/api/branches', async (req, res) => {
     }
 
     const args = [path.join(__dirname, '../scripts/github_collector.py'), '--list-branches', repoName];
+
+    // Add --no-cache flag if requested
+    if (noCache === 'true') {
+        args.push('--no-cache');
+    }
+
     const pythonProcess = spawn('python', args);
 
     let dataString = '';
@@ -349,7 +406,60 @@ app.get('/api/branches', async (req, res) => {
     });
 });
 
+// Check Updates Endpoint - Check if there are new commits/branches available
+app.get('/api/check-updates', async (req, res) => {
+    const { repository, branch } = req.query;
+    const repoName = repository || process.env.GITHUB_REPO;
+    const branchName = branch || 'main';
+
+    if (!repoName) {
+        return res.status(400).json({ error: 'Repository name is required' });
+    }
+
+    const args = [
+        path.join(__dirname, '../scripts/github_collector.py'),
+        '--check-updates',
+        repoName,
+        branchName
+    ];
+
+    const pythonProcess = spawn('python', args);
+
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.log(`Update Check: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            console.error('Update check failed:', errorString);
+            return res.status(500).json({
+                error: 'Failed to check for updates',
+                details: errorString
+            });
+        }
+        try {
+            const result = JSON.parse(dataString);
+            res.json(result);
+        } catch (e) {
+            console.error('Failed to parse update check output:', e);
+            res.status(500).json({
+                error: 'Failed to parse update check data',
+                raw: dataString
+            });
+        }
+    });
+});
+
 
 app.listen(PORT, () => {
+
     console.log(`Server running on port ${PORT}`);
 });

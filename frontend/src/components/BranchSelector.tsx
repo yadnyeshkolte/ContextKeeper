@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
-import './BranchSelector.css';
+import { Form } from 'react-bootstrap';
 
 interface Branch {
     name: string;
-    commit: {
+    commit?: {
         sha: string;
         url: string;
     };
-    protected: boolean;
+    protected?: boolean;
+    synced?: boolean;
+    doc_count?: number;
+    cached?: boolean;
 }
 
 interface BranchSelectorProps {
@@ -20,6 +23,7 @@ const BranchSelector: React.FC<BranchSelectorProps> = ({ repository, selectedBra
     const [branches, setBranches] = useState<Branch[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [fromCache, setFromCache] = useState(false);
 
     useEffect(() => {
         fetchBranches();
@@ -35,6 +39,7 @@ const BranchSelector: React.FC<BranchSelectorProps> = ({ repository, selectedBra
             }
             const data = await res.json();
             setBranches(data.branches || []);
+            setFromCache(data.from_cache || false);
 
             // If no branch is selected and we have branches, select the first one (usually main/master)
             if (!selectedBranch && data.branches && data.branches.length > 0) {
@@ -49,26 +54,26 @@ const BranchSelector: React.FC<BranchSelectorProps> = ({ repository, selectedBra
     };
 
     return (
-        <div className="branch-selector">
-            <label htmlFor="branch-select" className="branch-label">
-                📌 Branch:
-            </label>
-            <select
-                id="branch-select"
+        <div className="mb-3">
+            <Form.Label>
+                📌 Branch: {fromCache && <small className="text-muted">(from cache)</small>}
+            </Form.Label>
+            <Form.Select
                 value={selectedBranch}
                 onChange={(e) => onBranchChange(e.target.value)}
                 disabled={loading || branches.length === 0}
-                className="branch-select"
             >
                 {loading && <option>Loading branches...</option>}
                 {!loading && branches.length === 0 && <option>No branches available</option>}
                 {!loading && branches.map((branch) => (
                     <option key={branch.name} value={branch.name}>
                         {branch.name}
+                        {branch.synced && ` ✓ (${branch.doc_count || 0} docs)`}
+                        {branch.cached && ' (cached)'}
                     </option>
                 ))}
-            </select>
-            {error && <span className="branch-error">⚠️ {error}</span>}
+            </Form.Select>
+            {error && <Form.Text className="text-danger">⚠️ {error}</Form.Text>}
         </div>
     );
 };

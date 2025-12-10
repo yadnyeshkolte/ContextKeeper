@@ -9,11 +9,39 @@ from github.GithubException import RateLimitExceededException, GithubException
 from dotenv import load_dotenv
 import chromadb
 from sentence_transformers import SentenceTransformer
+from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure
 
 load_dotenv()
 
 class GitHubCollector:
     """Collects context from GitHub repository and stores in ChromaDB"""
+    
+    @staticmethod
+    def sanitize_branch_name(branch: str) -> str:
+        """Sanitize branch name to be valid for ChromaDB collection names.
+        ChromaDB requires names with 3-512 characters from [a-zA-Z0-9._-],
+        starting and ending with [a-zA-Z0-9].
+        """
+        if not branch:
+            return "main"
+        
+        # Replace invalid characters with underscores
+        import re
+        sanitized = re.sub(r'[^a-zA-Z0-9._-]', '_', branch)
+        
+        # Ensure it starts and ends with alphanumeric
+        sanitized = sanitized.strip('._-')
+        
+        # Ensure minimum length of 3
+        if len(sanitized) < 3:
+            sanitized = f"branch_{sanitized}"
+        
+        # Ensure maximum length of 512
+        if len(sanitized) > 512:
+            sanitized = sanitized[:512]
+        
+        return sanitized
     
     def __init__(self, repo_name: str = None, branch: str = None):
         self.github_token = os.getenv("GITHUB_TOKEN")
@@ -32,7 +60,7 @@ class GitHubCollector:
         
         # Repository-specific ChromaDB path with branch
         self.repo_safe_name = self.github_repo.replace("/", "_")
-        self.branch_safe_name = self.branch.replace("/", "_").replace("^", "_").replace("~", "_")
+        self.branch_safe_name = self.sanitize_branch_name(self.branch)
         chroma_path = f"./chroma_db_{self.repo_safe_name}_{self.branch_safe_name}"
         print(f"Using ChromaDB path: {chroma_path}", file=sys.stderr)
         
@@ -44,6 +72,22 @@ class GitHubCollector:
         print("Loading embedding model...", file=sys.stderr)
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         print("Embedding model loaded!", file=sys.stderr)
+        
+        # Initialize MongoDB client (optional, for metadata storage)
+        self.mongo_client = None
+        self.mongo_db = None
+        try:
+            mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/contextkeeper")
+            self.mongo_client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=5000)
+            # Test connection
+            self.mongo_client.admin.command('ping')
+            self.mongo_db = self.mongo_client.get_database()
+            print("MongoDB connected for metadata storage", file=sys.stderr)
+        except (ConnectionFailure, Exception) as e:
+            print(f"MongoDB not available (metadata won't be stored): {e}", file=sys.stderr)
+            self.mongo_client = None
+            self.mongo_db = None
+
     
     def _handle_rate_limit(self, e: RateLimitExceededException):
         """Handle GitHub API rate limiting"""
@@ -51,6 +95,77 @@ class GitHubCollector:
         sleep_time = (reset_time - datetime.now()).total_seconds() + 10
         print(f"Rate limit exceeded. Sleeping for {sleep_time} seconds...", file=sys.stderr)
         time.sleep(min(sleep_time, 300))  # Max 5 minutes wait
+    
+    def _save_metadata_to_mongodb(self, latest_commit: Dict[str, Any] = None):
+        """Save repository metadata to MongoDB"""
+        if self.mongo_db is None:
+            return
+        
+        try:
+            metadata_collection = self.mongo_db['repository_metadata']
+            
+            metadata = {
+                "repository": self.github_repo,
+                "branch": self.branch,
+                "latest_commit_sha": latest_commit.get("sha") if latest_commit else None,
+                "latest_commit_date": latest_commit.get("date") if latest_commit else None,
+                "last_synced": datetime.now().isoformat()
+            }
+            
+            # Upsert metadata
+            metadata_collection.update_one(
+                {"repository": self.github_repo, "branch": self.branch},
+                {"$set": metadata},
+                upsert=True
+            )
+            print(f"Saved metadata to MongoDB for {self.github_repo}/{self.branch}", file=sys.stderr)
+        except Exception as e:
+            print(f"Failed to save metadata to MongoDB: {e}", file=sys.stderr)
+    
+    @staticmethod
+    def check_for_updates(repo_name: str, branch: str) -> Dict[str, Any]:
+        """Check if there are new commits on GitHub compared to local MongoDB metadata"""
+        try:
+            mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/contextkeeper")
+            mongo_client = MongoClient(mongodb_uri, serverSelectionTimeoutMS=5000)
+            mongo_db = mongo_client.get_database()
+            metadata_collection = mongo_db['repository_metadata']
+            
+            # Get local metadata
+            local_metadata = metadata_collection.find_one({
+                "repository": repo_name,
+                "branch": branch
+            })
+            
+            if not local_metadata:
+                return {
+                    "has_updates": True,
+                    "reason": "No local metadata found",
+                    "local_commit": None,
+                    "remote_commit": None
+                }
+            
+            # Get remote latest commit
+            github_token = os.getenv("GITHUB_TOKEN")
+            github = Github(github_token)
+            repo = github.get_repo(repo_name)
+            latest_commit = repo.get_commits(sha=branch)[0]
+            
+            has_updates = local_metadata.get("latest_commit_sha") != latest_commit.sha
+            
+            return {
+                "has_updates": has_updates,
+                "local_commit": local_metadata.get("latest_commit_sha"),
+                "remote_commit": latest_commit.sha,
+                "local_date": local_metadata.get("latest_commit_date"),
+                "remote_date": latest_commit.commit.author.date.isoformat() if latest_commit.commit.author else None
+            }
+        except Exception as e:
+            return {
+                "has_updates": False,
+                "error": str(e)
+            }
+
     
     def collect_commits(self, max_commits: int = 100) -> List[Dict[str, Any]]:
         """Fetch recent commits from the repository with retry logic"""
@@ -297,6 +412,10 @@ class GitHubCollector:
         # Store everything in ChromaDB
         self.store_in_chromadb(all_data)
         
+        # Save metadata to MongoDB (if available)
+        if self.mongo_db is not None and commits:
+            self._save_metadata_to_mongodb(commits[0] if commits else None)
+        
         # Return summary
         summary = {
             "total_items": len(all_data),
@@ -304,6 +423,7 @@ class GitHubCollector:
             "pull_requests": len(prs),
             "issues": len(issues),
             "readme": 1 if readme else 0,
+
             "branch": self.branch,
             "timestamp": datetime.now().isoformat()
         }
@@ -311,34 +431,182 @@ class GitHubCollector:
         return summary
 
     
-    def list_branches(self):
+    @staticmethod
+    def check_chromadb_exists(repo_name: str, branch: str = None) -> dict:
+        """Check if ChromaDB exists for a repository/branch"""
+        repo_safe_name = repo_name.replace("/", "_")
+        
+        if branch:
+            branch_safe_name = GitHubCollector.sanitize_branch_name(branch)
+            chroma_path = f"./chroma_db_{repo_safe_name}_{branch_safe_name}"
+            collection_name = f"context_{repo_safe_name}_{branch_safe_name}"
+        else:
+            # Check if any ChromaDB exists for this repo
+            import glob
+            pattern = f"./chroma_db_{repo_safe_name}_*"
+            existing_dbs = glob.glob(pattern)
+            return {
+                "exists": len(existing_dbs) > 0,
+                "databases": existing_dbs,
+                "count": len(existing_dbs)
+            }
+        
+        if not os.path.exists(chroma_path):
+            return {"exists": False, "path": chroma_path, "count": 0}
+        
+        try:
+            client = chromadb.PersistentClient(path=chroma_path)
+            collection = client.get_or_create_collection(collection_name)
+            count = collection.count()
+            return {
+                "exists": True,
+                "path": chroma_path,
+                "count": count,
+                "status": "ok"
+            }
+        except Exception as e:
+            return {
+                "exists": False,
+                "path": chroma_path,
+                "count": 0,
+                "error": str(e)
+            }
+    
+    def list_branches(self, check_cache: bool = True):
         """List all branches in the repository"""
         print(f"Listing branches for {self.github_repo}...", file=sys.stderr)
+        
+        # Check if we have cached branches in ChromaDB
+        if check_cache:
+            cache_check = self.check_chromadb_exists(self.github_repo)
+            if cache_check.get("exists") and cache_check.get("count", 0) > 0:
+                # Extract branch names from existing ChromaDB directories
+                cached_branches = []
+                for db_path in cache_check.get("databases", []):
+                    # Extract branch name from path like "./chroma_db_owner_repo_branchname"
+                    # Remove the prefix to get the sanitized branch name
+                    prefix = f"./chroma_db_{self.repo_safe_name}_"
+                    if db_path.startswith(prefix):
+                        sanitized_branch = db_path[len(prefix):]
+                        # Skip if it looks like a path (contains backslashes or forward slashes after sanitization)
+                        if "\\" in sanitized_branch or "/" in sanitized_branch:
+                            print(f"Skipping invalid cached branch path: {db_path}", file=sys.stderr)
+                            continue
+                        # Only add if it's a valid identifier
+                        if sanitized_branch and len(sanitized_branch) >= 3:
+                            cached_branches.append({
+                                "name": sanitized_branch,
+                                "cached": True,
+                                "db_path": db_path
+                            })
+                
+                if cached_branches:
+                    print(f"Found {len(cached_branches)} cached branches", file=sys.stderr)
+                    return {"branches": cached_branches, "from_cache": True}
+        
+        # Fetch from GitHub if no cache or cache check disabled
         try:
             branches = self.repo.get_branches()
             branch_list = []
             for branch in branches:
+                # Check if this branch has ChromaDB
+                db_check = self.check_chromadb_exists(self.github_repo, branch.name)
                 branch_list.append({
                     "name": branch.name,
                     "commit": {
                         "sha": branch.commit.sha,
                         "url": branch.commit.html_url
                     },
-                    "protected": branch.protected
+                    "protected": branch.protected,
+                    "synced": db_check.get("exists", False),
+                    "doc_count": db_check.get("count", 0)
                 })
-            print(f"Found {len(branch_list)} branches", file=sys.stderr)
-            return {"branches": branch_list}
+            print(f"Found {len(branch_list)} branches from GitHub", file=sys.stderr)
+            return {"branches": branch_list, "from_cache": False}
         except Exception as e:
             print(f"Error listing branches: {e}", file=sys.stderr)
-            return {"branches": [], "error": str(e)}
+            return {"branches": [], "error": str(e), "from_cache": False}
+    
+    def sync_all_branches(self, max_branches: int = 10):
+        """Sync data from all branches in the repository"""
+        print(f"Syncing all branches for {self.github_repo}...", file=sys.stderr)
+        
+        # Get all branches
+        branches_result = self.list_branches(check_cache=False)
+        branches = branches_result.get("branches", [])
+        
+        if not branches:
+            return {
+                "error": "No branches found",
+                "synced_branches": [],
+                "total_branches": 0
+            }
+        
+        # Limit number of branches to sync
+        branches_to_sync = branches[:max_branches]
+        synced_branches = []
+        errors = []
+        
+        for branch_info in branches_to_sync:
+            branch_name = branch_info["name"]
+            print(f"Syncing branch: {branch_name}...", file=sys.stderr)
+            
+            try:
+                # Create a new collector instance for this branch
+                branch_collector = GitHubCollector(repo_name=self.github_repo, branch=branch_name)
+                summary = branch_collector.collect_all()
+                synced_branches.append({
+                    "branch": branch_name,
+                    "success": True,
+                    "summary": summary
+                })
+                print(f"Successfully synced branch {branch_name}", file=sys.stderr)
+            except Exception as e:
+                error_msg = f"Failed to sync branch {branch_name}: {str(e)}"
+                print(error_msg, file=sys.stderr)
+                errors.append(error_msg)
+                synced_branches.append({
+                    "branch": branch_name,
+                    "success": False,
+                    "error": str(e)
+                })
+        
+        return {
+            "total_branches": len(branches),
+            "synced_count": len([b for b in synced_branches if b["success"]]),
+            "failed_count": len(errors),
+            "synced_branches": synced_branches,
+            "errors": errors,
+            "timestamp": datetime.now().isoformat()
+        }
 
 if __name__ == "__main__":
     try:
         # Check if --list-branches flag is present
         if len(sys.argv) > 1 and sys.argv[1] == '--list-branches':
             repo_name = sys.argv[2] if len(sys.argv) > 2 else None
+            check_cache = sys.argv[3] != '--no-cache' if len(sys.argv) > 3 else True
             collector = GitHubCollector(repo_name=repo_name)
-            result = collector.list_branches()
+            result = collector.list_branches(check_cache=check_cache)
+            print(json.dumps(result))
+        # Check if --sync-all-branches flag is present
+        elif len(sys.argv) > 1 and sys.argv[1] == '--sync-all-branches':
+            repo_name = sys.argv[2] if len(sys.argv) > 2 else None
+            collector = GitHubCollector(repo_name=repo_name)
+            result = collector.sync_all_branches()
+            print(json.dumps(result))
+        # Check if --check-updates flag is present
+        elif len(sys.argv) > 1 and sys.argv[1] == '--check-updates':
+            repo_name = sys.argv[2] if len(sys.argv) > 2 else None
+            branch = sys.argv[3] if len(sys.argv) > 3 else 'main'
+            result = GitHubCollector.check_for_updates(repo_name, branch)
+            print(json.dumps(result))
+        # Check if --check-db flag is present
+        elif len(sys.argv) > 1 and sys.argv[1] == '--check-db':
+
+            repo_name = sys.argv[2] if len(sys.argv) > 2 else None
+            branch = sys.argv[3] if len(sys.argv) > 3 else None
+            result = GitHubCollector.check_chromadb_exists(repo_name, branch)
             print(json.dumps(result))
         else:
             # Get repository name and branch from command line or environment

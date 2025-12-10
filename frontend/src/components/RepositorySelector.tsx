@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import './RepositorySelector.css';
+import { Form, Button, InputGroup } from 'react-bootstrap';
 
 interface RepositorySelectorProps {
     repository: string;
@@ -40,38 +40,47 @@ const RepositorySelector = ({ repository, onRepositoryChange }: RepositorySelect
     };
 
     return (
-        <div className="repository-selector">
-            <label className="repo-label">📦 Repository:</label>
+        <div className="mb-3">
+            <Form.Label>📦 Repository:</Form.Label>
             {!isEditing ? (
-                <div className="repo-display">
-                    <span className="repo-name">{repository}</span>
-                    <button
+                <InputGroup>
+                    <Form.Control
+                        type="text"
+                        value={repository}
+                        readOnly
+                        disabled
+                    />
+                    <Button
+                        variant="outline-secondary"
                         onClick={() => setIsEditing(true)}
-                        className="edit-button"
                         title="Change repository"
                     >
                         ✏️ Edit
-                    </button>
-                </div>
+                    </Button>
+                </InputGroup>
             ) : (
-                <div className="repo-edit">
-                    <input
+                <InputGroup>
+                    <Form.Control
                         type="text"
                         value={tempRepo}
                         onChange={(e) => setTempRepo(e.target.value)}
                         placeholder="owner/repository"
-                        className="repo-input"
                         autoFocus
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') handleSave();
                             if (e.key === 'Escape') handleCancel();
                         }}
+                        isInvalid={!!error}
                     />
-                    <button onClick={handleSave} className="save-button">✓</button>
-                    <button onClick={handleCancel} className="cancel-button">✗</button>
-                </div>
+                    <Button variant="success" onClick={handleSave}>✓</Button>
+                    <Button variant="danger" onClick={handleCancel}>✗</Button>
+                    {error && (
+                        <Form.Control.Feedback type="invalid">
+                            {error}
+                        </Form.Control.Feedback>
+                    )}
+                </InputGroup>
             )}
-            {error && <div className="repo-error">{error}</div>}
         </div>
     );
 };
