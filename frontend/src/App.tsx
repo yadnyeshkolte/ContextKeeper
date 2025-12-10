@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './App.css';
 import KnowledgeGraph from './components/KnowledgeGraph';
 import SyncStatus from './components/SyncStatus';
+import RepositorySelector from './components/RepositorySelector';
 
 interface Source {
   type: string;
@@ -30,6 +31,28 @@ function App() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'query' | 'graph'>('query');
+  const [repository, setRepository] = useState<string>('yadnyeshkolte/ContextKeeper');
+  const [branch, setBranch] = useState<string>('main');
+
+  // Fetch default repository from backend config
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch('http://localhost:3000/api/config');
+        const data = await res.json();
+        if (data.defaultRepository) {
+          setRepository(data.defaultRepository);
+        }
+        if (data.defaultBranch) {
+          setBranch(data.defaultBranch);
+        }
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+        // Keep default values on error
+      }
+    };
+    fetchConfig();
+  }, []);
 
   const handleQuery = async () => {
     if (!query) return;
@@ -39,7 +62,7 @@ function App() {
       const res = await fetch('http://localhost:3000/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: query })
+        body: JSON.stringify({ question: query, repository, branch })
       });
       const data: QueryResult = await res.json();
       setResult(data);
@@ -64,7 +87,8 @@ function App() {
       <main className="app-main">
         {activeTab === 'query' && (
           <>
-            <SyncStatus />
+            <RepositorySelector repository={repository} onRepositoryChange={setRepository} />
+            <SyncStatus repository={repository} branch={branch} onBranchChange={setBranch} />
             <div className="search-section">
               <input
                 type="text"
@@ -134,7 +158,7 @@ function App() {
           </>
         )}
 
-        {activeTab === 'graph' && <KnowledgeGraph />}
+        {activeTab === 'graph' && <KnowledgeGraph repository={repository} branch={branch} onBranchChange={setBranch} />}
 
       </main>
     </div>

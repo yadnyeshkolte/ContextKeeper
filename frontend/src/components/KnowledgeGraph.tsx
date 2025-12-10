@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
+import BranchSelector from './BranchSelector';
 
 // Define types for the graph data
 interface GraphNode {
@@ -27,13 +28,19 @@ interface GraphData {
     };
 }
 
-const KnowledgeGraph: React.FC = () => {
+interface KnowledgeGraphProps {
+    repository: string;
+    branch: string;
+    onBranchChange: (branch: string) => void;
+}
+
+const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ repository, branch, onBranchChange }) => {
     const [graphData, setGraphData] = useState<GraphData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        fetch('http://localhost:3000/api/knowledge-graph')
+        fetch(`http://localhost:3000/api/knowledge-graph?repository=${encodeURIComponent(repository)}&branch=${encodeURIComponent(branch)}`)
             .then(res => res.json())
             .then((data: GraphData) => {
                 setGraphData(data);
@@ -44,7 +51,7 @@ const KnowledgeGraph: React.FC = () => {
                 setError('Failed to load knowledge graph');
                 setLoading(false);
             });
-    }, []);
+    }, [repository, branch]);
 
     // Color mapping for different node types
     const getNodeColor = (node: GraphNode) => {
@@ -91,6 +98,11 @@ const KnowledgeGraph: React.FC = () => {
 
     return (
         <div className="knowledge-graph" style={{ border: '1px solid #ccc', padding: '20px', marginTop: '20px', borderRadius: '8px' }}>
+            <BranchSelector
+                repository={repository}
+                selectedBranch={branch}
+                onBranchChange={onBranchChange}
+            />
             <h2>Knowledge Graph</h2>
             {graphData.stats && (
                 <div style={{ marginBottom: '10px', fontSize: '14px', color: '#666' }}>

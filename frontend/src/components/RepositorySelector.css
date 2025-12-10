@@ -1,0 +1,122 @@
+.repository-selector {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.repo-label {
+    font-weight: 600;
+    color: #a0a0a0;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.repo-display {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.repo-name {
+    font-family: 'Courier New', monospace;
+    font-size: 15px;
+    color: #4fc3f7;
+    font-weight: 500;
+    padding: 6px 12px;
+    background: rgba(79, 195, 247, 0.1);
+    border-radius: 4px;
+    border: 1px solid rgba(79, 195, 247, 0.3);
+}
+
+.edit-button {
+    padding: 6px 12px;
+    background: rgba(156, 39, 176, 0.2);
+    border: 1px solid rgba(156, 39, 176, 0.4);
+    border-radius: 4px;
+    color: #ce93d8;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.edit-button:hover {
+    background: rgba(156, 39, 176, 0.3);
+    border-color: rgba(156, 39, 176, 0.6);
+    transform: translateY(-1px);
+}
+
+.repo-edit {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.repo-input {
+    flex: 1;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(79, 195, 247, 0.4);
+    border-radius: 4px;
+    color: #fff;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+}
+
+.repo-input:focus {
+    border-color: rgba(79, 195, 247, 0.8);
+    box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
+}
+
+.save-button,
+.cancel-button {
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    transition: all 0.2s;
+    border: 1px solid;
+}
+
+.save-button {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: rgba(76, 175, 80, 0.4);
+    color: #81c784;
+}
+
+.save-button:hover {
+    background: rgba(76, 175, 80, 0.3);
+    border-color: rgba(76, 175, 80, 0.6);
+    transform: translateY(-1px);
+}
+
+.cancel-button {
+    background: rgba(244, 67, 54, 0.2);
+    border-color: rgba(244, 67, 54, 0.4);
+    color: #e57373;
+}
+
+.cancel-button:hover {
+    background: rgba(244, 67, 54, 0.3);
+    border-color: rgba(244, 67, 54, 0.6);
+    transform: translateY(-1px);
+}
+
+.repo-error {
+    color: #e57373;
+    font-size: 13px;
+    margin-top: 4px;
+    padding: 6px 12px;
+    background: rgba(244, 67, 54, 0.1);
+    border-radius: 4px;
+    border-left: 3px solid #e57373;
+}

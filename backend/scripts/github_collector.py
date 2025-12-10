@@ -15,9 +15,10 @@ load_dotenv()
 class GitHubCollector:
     """Collects context from GitHub repository and stores in ChromaDB"""
     
-    def __init__(self, repo_name: str = None):
+    def __init__(self, repo_name: str = None, branch: str = None):
         self.github_token = os.getenv("GITHUB_TOKEN")
         self.github_repo = repo_name or os.getenv("GITHUB_REPO")
+        self.branch = branch or "main"
         
         if not self.github_token:
             raise ValueError("GITHUB_TOKEN not found in environment variables")
@@ -25,18 +26,19 @@ class GitHubCollector:
             raise ValueError("GITHUB_REPO not found in environment variables")
         
         # Initialize GitHub client with retry
-        print(f"Initializing GitHub client for {self.github_repo}...", file=sys.stderr)
+        print(f"Initializing GitHub client for {self.github_repo} (branch: {self.branch})...", file=sys.stderr)
         self.github = Github(self.github_token, per_page=100, retry=3)
         self.repo = self.github.get_repo(self.github_repo)
         
-        # Repository-specific ChromaDB path
+        # Repository-specific ChromaDB path with branch
         self.repo_safe_name = self.github_repo.replace("/", "_")
-        chroma_path = f"./chroma_db_{self.repo_safe_name}"
+        self.branch_safe_name = self.branch.replace("/", "_").replace("^", "_").replace("~", "_")
+        chroma_path = f"./chroma_db_{self.repo_safe_name}_{self.branch_safe_name}"
         print(f"Using ChromaDB path: {chroma_path}", file=sys.stderr)
         
-        # Initialize ChromaDB with repository-specific path
+        # Initialize ChromaDB with repository and branch-specific path
         self.chroma_client = chromadb.PersistentClient(path=chroma_path)
-        self.collection = self.chroma_client.get_or_create_collection(f"context_{self.repo_safe_name}")
+        self.collection = self.chroma_client.get_or_create_collection(f"context_{self.repo_safe_name}_{self.branch_safe_name}")
         
         # Initialize embedding model
         print("Loading embedding model...", file=sys.stderr)
@@ -52,13 +54,14 @@ class GitHubCollector:
     
     def collect_commits(self, max_commits: int = 100) -> List[Dict[str, Any]]:
         """Fetch recent commits from the repository with retry logic"""
-        print(f"Fetching up to {max_commits} commits...", file=sys.stderr)
+        print(f"Fetching up to {max_commits} commits from branch {self.branch}...", file=sys.stderr)
         commits_data = []
         
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                commits = self.repo.get_commits()[:max_commits]
+                # Fetch commits from specific branch
+                commits = self.repo.get_commits(sha=self.branch)[:max_commits]
                 
                 for commit in commits:
                     try:
@@ -247,7 +250,8 @@ class GitHubCollector:
                 "type": item["type"],
                 "url": item.get("url", ""),
                 "author": item.get("author", ""),
-                "date": item.get("date") or item.get("created_at", "")
+                "date": item.get("date") or item.get("created_at", ""),
+                "branch": self.branch
             }
             metadatas.append(metadata)
         
@@ -269,7 +273,7 @@ class GitHubCollector:
     
     def collect_all(self):
         """Collect all data from GitHub and store in ChromaDB"""
-        print(f"Starting GitHub data collection for {self.github_repo}...", file=sys.stderr)
+        print(f"Starting GitHub data collection for {self.github_repo} (branch: {self.branch})...", file=sys.stderr)
         
         all_data = []
         
@@ -300,19 +304,50 @@ class GitHubCollector:
             "pull_requests": len(prs),
             "issues": len(issues),
             "readme": 1 if readme else 0,
+            "branch": self.branch,
             "timestamp": datetime.now().isoformat()
         }
         
         return summary
 
+    
+    def list_branches(self):
+        """List all branches in the repository"""
+        print(f"Listing branches for {self.github_repo}...", file=sys.stderr)
+        try:
+            branches = self.repo.get_branches()
+            branch_list = []
+            for branch in branches:
+                branch_list.append({
+                    "name": branch.name,
+                    "commit": {
+                        "sha": branch.commit.sha,
+                        "url": branch.commit.html_url
+                    },
+                    "protected": branch.protected
+                })
+            print(f"Found {len(branch_list)} branches", file=sys.stderr)
+            return {"branches": branch_list}
+        except Exception as e:
+            print(f"Error listing branches: {e}", file=sys.stderr)
+            return {"branches": [], "error": str(e)}
+
 if __name__ == "__main__":
     try:
-        # Get repository name from command line or environment
-        repo_name = sys.argv[1] if len(sys.argv) > 1 else None
-        
-        collector = GitHubCollector(repo_name=repo_name)
-        summary = collector.collect_all()
-        print(json.dumps(summary))
+        # Check if --list-branches flag is present
+        if len(sys.argv) > 1 and sys.argv[1] == '--list-branches':
+            repo_name = sys.argv[2] if len(sys.argv) > 2 else None
+            collector = GitHubCollector(repo_name=repo_name)
+            result = collector.list_branches()
+            print(json.dumps(result))
+        else:
+            # Get repository name and branch from command line or environment
+            repo_name = sys.argv[1] if len(sys.argv) > 1 else None
+            branch = sys.argv[2] if len(sys.argv) > 2 else None
+            
+            collector = GitHubCollector(repo_name=repo_name, branch=branch)
+            summary = collector.collect_all()
+            print(json.dumps(summary))
     except Exception as e:
         import traceback
         traceback.print_exc(file=sys.stderr)

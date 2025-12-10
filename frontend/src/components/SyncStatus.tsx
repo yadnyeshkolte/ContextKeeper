@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import './SyncStatus.css';
+import BranchSelector from './BranchSelector';
 
 interface SyncStatusData {
     chromadb: {
@@ -21,7 +22,13 @@ interface SyncResult {
     error?: string;
 }
 
-const SyncStatus = () => {
+interface SyncStatusProps {
+    repository: string;
+    branch: string;
+    onBranchChange: (branch: string) => void;
+}
+
+const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => {
     const [status, setStatus] = useState<SyncStatusData | null>(null);
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<string | null>(null);
@@ -29,7 +36,7 @@ const SyncStatus = () => {
 
     const fetchStatus = async () => {
         try {
-            const res = await fetch('http://localhost:3000/api/status');
+            const res = await fetch(`http://localhost:3000/api/status?repository=${encodeURIComponent(repository)}&branch=${encodeURIComponent(branch)}`);
             const data = await res.json();
             setStatus(data);
             setError(null);
@@ -45,7 +52,8 @@ const SyncStatus = () => {
         try {
             const res = await fetch('http://localhost:3000/api/collect/github', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ repository, branch })
             });
             const data: SyncResult = await res.json();
 
@@ -69,10 +77,15 @@ const SyncStatus = () => {
         // Refresh status every 30 seconds
         const interval = setInterval(fetchStatus, 30000);
         return () => clearInterval(interval);
-    }, []);
+    }, [branch, repository]);
 
     return (
         <div className="sync-status">
+            <BranchSelector
+                repository={repository}
+                selectedBranch={branch}
+                onBranchChange={onBranchChange}
+            />
             <div className="sync-header">
                 <h3>📊 System Status</h3>
                 <button
@@ -80,7 +93,7 @@ const SyncStatus = () => {
                     disabled={syncing}
                     className="sync-button"
                 >
-                    {syncing ? '🔄 Syncing...' : '🔄 Sync GitHub'}
+                    {syncing ? `🔄 Syncing ${branch}...` : `🔄 Sync ${branch}`}
                 </button>
             </div>
 

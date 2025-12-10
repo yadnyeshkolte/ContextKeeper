@@ -13,18 +13,20 @@ load_dotenv()
 class KnowledgeGraphBuilder:
     """Builds a knowledge graph from ChromaDB context data"""
     
-    def __init__(self, repo_name: str = None):
+    def __init__(self, repo_name: str = None, branch: str = None):
         # Get repository name for ChromaDB path and sanitize it
         # ChromaDB collection names must match [a-zA-Z0-9._-] and cannot contain '/'
         raw_repo_name = repo_name or os.getenv("GITHUB_REPO", "default")
         self.repo_name = raw_repo_name.replace("/", "_")
+        self.branch = branch or "main"
+        self.branch_safe_name = self.branch.replace("/", "_").replace("^", "_").replace("~", "_")
         
-        # Repository-specific ChromaDB path
-        chroma_path = f"./chroma_db_{self.repo_name}"
+        # Repository and branch-specific ChromaDB path
+        chroma_path = f"./chroma_db_{self.repo_name}_{self.branch_safe_name}"
         print(f"Using ChromaDB path: {chroma_path}", file=sys.stderr)
         
         self.chroma_client = chromadb.PersistentClient(path=chroma_path)
-        self.collection = self.chroma_client.get_or_create_collection(f"context_{self.repo_name}")
+        self.collection = self.chroma_client.get_or_create_collection(f"context_{self.repo_name}_{self.branch_safe_name}")
         
         # Graph data structures
         self.nodes = {}
@@ -58,61 +60,83 @@ class KnowledgeGraphBuilder:
         return set(re.findall(r'@(\w+)', text))
     
     def extract_modules(self, text: str) -> Set[str]:
-        """Extract module/technology names from text"""
+        """Extract module/technology names from text with improved accuracy"""
         if not text:
             return set()
         
-        # Common technology keywords
+        # Common technology keywords - expanded and more specific
         tech_keywords = [
-            'redis', 'postgres', 'mongodb', 'mysql', 'elasticsearch',
-            'react', 'vue', 'angular', 'node', 'express', 'django', 'flask',
+            'redis', 'postgres', 'postgresql', 'mongodb', 'mysql', 'elasticsearch',
+            'react', 'vue', 'angular', 'node', 'express', 'django', 'flask', 'fastapi',
             'docker', 'kubernetes', 'aws', 'azure', 'gcp',
             'graphql', 'rest', 'grpc', 'websocket',
             'jwt', 'oauth', 'auth0', 'firebase',
-            'webpack', 'vite', 'babel', 'typescript', 'javascript', 'python'
+            'webpack', 'vite', 'babel', 'typescript', 'javascript', 'python',
+            'chromadb', 'huggingface', 'gemini', 'slack', 'github', 'nextjs', 'tailwind'
         ]
         
         modules = set()
         text_lower = text.lower()
         
+        # Only detect technology keywords if they appear as whole words
         for keyword in tech_keywords:
-            if keyword in text_lower:
+            # Use word boundary to avoid partial matches
+            if re.search(r'\b' + re.escape(keyword) + r'\b', text_lower):
                 modules.add(keyword.capitalize())
         
-        # Extract file extensions as modules
-        file_patterns = re.findall(r'\.(py|js|ts|jsx|tsx|go|java|rb|php|cpp|c|rs)', text)
-        for ext in file_patterns:
-            modules.add(f"{ext.upper()} Module")
+        # Extract file extensions as modules - ONLY from actual code file paths
+        # Look for patterns like: filename.ext, path/filename.ext, or "filename.ext"
+        # Avoid matching URLs, version numbers, etc.
+        file_patterns = re.findall(r'(?:^|[\s/\\"\'])([a-zA-Z0-9_-]+\.(py|js|ts|jsx|tsx|java|cpp|go|rs|rb))(?:[\s,;"\']|$)', text)
+        
+        # Only add if we found actual file references (not just extensions in prose)
+        if file_patterns:
+            for filename, ext in file_patterns:
+                # Only add if this looks like a real file (has a reasonable name)
+                if len(filename) > 3:  # Avoid single-letter filenames
+                    ext_clean = ext.upper()
+                    modules.add(f"{ext_clean} Module")
         
         return modules
     
     def extract_decisions(self, text: str, metadata: Dict) -> List[str]:
-        """Extract decision keywords from text"""
+        """Extract decision keywords from text with improved accuracy"""
         if not text:
             return []
         
+        # Enhanced decision keywords with context
         decision_keywords = [
             'decided', 'decision', 'chose', 'choose', 'selected', 'switch',
             'migrate', 'refactor', 'implement', 'add', 'remove', 'deprecate',
-            'why', 'because', 'reason', 'rationale'
+            'why', 'because', 'reason', 'rationale', 'approach', 'strategy'
         ]
         
         decisions = []
         text_lower = text.lower()
         
-        for keyword in decision_keywords:
-            if keyword in text_lower:
-                # Create a decision node based on type and content
-                doc_type = metadata.get('type', 'unknown')
-                if doc_type == 'pull_request':
-                    decisions.append(f"PR Decision: {metadata.get('url', 'Unknown')}")
-                elif doc_type == 'issue':
-                    decisions.append(f"Issue Decision: {metadata.get('url', 'Unknown')}")
-                elif doc_type == 'commit':
-                    decisions.append(f"Commit Decision: {metadata.get('url', 'Unknown')}")
-                elif doc_type == 'slack_message':
-                    decisions.append(f"Slack Decision: {metadata.get('channel', 'Unknown')}")
-                break  # Only create one decision per document
+        # Check if text contains decision-related keywords
+        has_decision_keyword = any(keyword in text_lower for keyword in decision_keywords)
+        
+        # Only create decision nodes for meaningful content
+        # Filter out generic commit messages and short texts
+        if has_decision_keyword and len(text) > 50:  # Minimum length for meaningful decision
+            doc_type = metadata.get('type', 'unknown')
+            
+            # Create more descriptive decision labels
+            if doc_type == 'pull_request':
+                # Extract PR title or first line of body
+                title = text.split('\n')[0][:100] if text else 'PR Decision'
+                decisions.append(f"PR: {title}")
+            elif doc_type == 'issue':
+                title = text.split('\n')[0][:100] if text else 'Issue Decision'
+                decisions.append(f"Issue: {title}")
+            elif doc_type == 'commit':
+                # Only include commits with meaningful messages
+                if not any(skip in text_lower for skip in ['merge', 'update readme', 'fix typo', 'formatting']):
+                    message = text.split('\n')[0][:100] if text else 'Commit Decision'
+                    decisions.append(f"Commit: {message}")
+            elif doc_type == 'slack_message':
+                decisions.append(f"Discussion: {metadata.get('channel', 'Unknown')}")
         
         return decisions
     
@@ -254,10 +278,11 @@ class KnowledgeGraphBuilder:
 
 if __name__ == "__main__":
     try:
-        # Get repository name from command line or environment
+        # Get repository name and branch from command line or environment
         repo_name = sys.argv[1] if len(sys.argv) > 1 else None
+        branch = sys.argv[2] if len(sys.argv) > 2 else None
         
-        builder = KnowledgeGraphBuilder(repo_name=repo_name)
+        builder = KnowledgeGraphBuilder(repo_name=repo_name, branch=branch)
         graph = builder.build_graph()
         print(json.dumps(graph))
     except Exception as e:
