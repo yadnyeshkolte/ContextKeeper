@@ -103,7 +103,7 @@ class GitHubCollector:
         print(f"Rate limit exceeded. Sleeping for {sleep_time} seconds...", file=sys.stderr)
         time.sleep(min(sleep_time, 300))  # Max 5 minutes wait
     
-    def _save_metadata_to_mongodb(self, latest_commit: Dict[str, Any] = None):
+    def _save_metadata_to_mongodb(self, latest_commit: Dict[str, Any] = None, doc_count: int = 0):
         """Save repository metadata to MongoDB"""
         if self.mongo_db is None:
             return
@@ -116,6 +116,7 @@ class GitHubCollector:
                 "branch": self.branch,
                 "latest_commit_sha": latest_commit.get("sha") if latest_commit else None,
                 "latest_commit_date": latest_commit.get("date") if latest_commit else None,
+                "doc_count": doc_count,
                 "last_synced": datetime.now().isoformat()
             }
             
@@ -429,7 +430,7 @@ class GitHubCollector:
         
         # Save metadata to MongoDB (if available)
         if self.mongo_db is not None and commits:
-            self._save_metadata_to_mongodb(commits[0] if commits else None)
+            self._save_metadata_to_mongodb(commits[0] if commits else None, doc_count=len(all_data))
         
         # Return summary
         summary = {
@@ -514,6 +515,7 @@ class GitHubCollector:
                     "name": entry['branch'],
                     "cached": True,
                     "last_synced": entry.get('last_synced'),
+                    "doc_count": entry.get('doc_count', 0),
                     "synced": True  # If it's in metadata, we assume we synced it
                 })
             return branches
@@ -530,7 +532,16 @@ class GitHubCollector:
             print("Mode: Local Cache Only", file=sys.stderr)
             cached_branches = self.get_cached_branches_from_mongodb(self.github_repo)
             if cached_branches:
-                print(f"Found {len(cached_branches)} branches in local cache", file=sys.stderr)
+                print(f"Found {len(cached_branches)} branches in local cache (MongoDB)", file=sys.stderr)
+                
+                # Backfill doc_count if missing/zero (for existing metadata)
+                for branch in cached_branches:
+                     if branch.get('doc_count', 0) == 0:
+                         print(f"Backfilling doc_count for {branch['name']}...", file=sys.stderr)
+                         metrics = self.check_chromadb_exists(self.github_repo, branch['name'])
+                         if metrics.get('exists'):
+                             branch['doc_count'] = metrics.get('count', 0)
+                             
                 return {"branches": cached_branches, "from_cache": True}
             else:
                  # Fallback to checking folders if MongoDB is empty? 
@@ -561,6 +572,22 @@ class GitHubCollector:
                                 "cached": True,
                                 "db_path": db_path
                             })
+
+                            # Get actual count for each cached branch
+                            # This might be slow if there are many branches, but correct.
+                            if cached_branches:
+                                for branch in cached_branches:
+                                    repo_name = self.github_repo
+                                    branch_name = branch['name']
+                                    
+                                    # Use check_chromadb_exists to get count
+                                    metrics = self.check_chromadb_exists(repo_name, branch_name)
+                                    if metrics.get('exists'):
+                                        branch['doc_count'] = metrics.get('count', 0)
+                                        branch['synced'] = True
+                                    else:
+                                        branch['doc_count'] = 0
+                                        branch['synced'] = False
                 
                 if cached_branches:
                     print(f"Found {len(cached_branches)} cached branches (filesystem)", file=sys.stderr)
