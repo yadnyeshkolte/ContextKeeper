@@ -39,8 +39,10 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [isFetchingStatus, setIsFetchingStatus] = useState(false);
 
-    const fetchStatus = async () => {
-        setIsFetchingStatus(true);
+    const fetchStatus = async (showLoading = true) => {
+        if (showLoading) {
+            setIsFetchingStatus(true);
+        }
         try {
             const res = await fetch(`http://localhost:3000/api/status?repository=${encodeURIComponent(repository)}&branch=${encodeURIComponent(branch)}`);
             const data = await res.json();
@@ -50,7 +52,9 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
             console.error('Failed to fetch status:', err);
             setError('Failed to connect to backend');
         } finally {
-            setIsFetchingStatus(false);
+            if (showLoading) {
+                setIsFetchingStatus(false);
+            }
         }
     };
 
@@ -70,7 +74,7 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
                 setLastSync(data.timestamp || new Date().toISOString());
                 setSuccessMessage(`Synced ${data.total_items || 0} items from ${branch}`);
                 // Refresh status after sync
-                setTimeout(fetchStatus, 1000);
+                setTimeout(() => fetchStatus(false), 1000);
             } else {
                 setError(data.error || 'Sync failed');
             }
@@ -98,7 +102,7 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
                 setLastSync(data.timestamp || new Date().toISOString());
                 setSuccessMessage(`Synced ${data.synced_count || 0} of ${data.total_branches || 0} branches`);
                 // Refresh status after sync
-                setTimeout(fetchStatus, 1000);
+                setTimeout(() => fetchStatus(false), 1000);
             } else {
                 setError(data.error || 'Repository sync failed');
             }
@@ -111,9 +115,9 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
     };
 
     useEffect(() => {
-        fetchStatus();
+        fetchStatus(true);
         // Refresh status every 30 seconds
-        const interval = setInterval(fetchStatus, 30000);
+        const interval = setInterval(() => fetchStatus(false), 30000);
         return () => clearInterval(interval);
     }, [branch, repository]);
 
