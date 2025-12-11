@@ -37,8 +37,10 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
     const [lastSync, setLastSync] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [isFetchingStatus, setIsFetchingStatus] = useState(false);
 
     const fetchStatus = async () => {
+        setIsFetchingStatus(true);
         try {
             const res = await fetch(`http://localhost:3000/api/status?repository=${encodeURIComponent(repository)}&branch=${encodeURIComponent(branch)}`);
             const data = await res.json();
@@ -47,6 +49,8 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
         } catch (err) {
             console.error('Failed to fetch status:', err);
             setError('Failed to connect to backend');
+        } finally {
+            setIsFetchingStatus(false);
         }
     };
 
@@ -158,6 +162,13 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
                         </Button>
                     </div>
                 </div>
+
+                {isFetchingStatus && (
+                    <Alert variant="info" className="d-flex align-items-center">
+                        <Spinner animation="border" size="sm" className="me-2" />
+                        fetching from local chroma db...
+                    </Alert>
+                )}
 
                 {error && (
                     <Alert variant="danger" dismissible onClose={() => setError(null)}>
