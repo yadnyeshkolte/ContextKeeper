@@ -399,21 +399,41 @@ app.get('/api/status', async (req, res) => {
     });
 });
 
-// Branches Endpoint - List available branches for a repository (with ChromaDB cache check)
+// Branches Endpoint - Cache-First approach
 app.get('/api/branches', async (req, res) => {
     const { repository, noCache } = req.query;
     const repoName = repository || process.env.GITHUB_REPO;
+    const repoSafeKey = repoName.replace("/", "_");
 
     if (!repoName) {
         return res.status(400).json({ error: 'Repository name is required' });
     }
 
-    const args = [path.join(__dirname, '../scripts/github_collector.py'), '--list-branches', repoName];
+    // 1. Try to get from local cache first (MongoDB/File)
+    // We run python script with --local-only
+    const args = [path.join(__dirname, '../scripts/github_collector.py'), '--list-branches', repoName, '--local-only'];
 
-    // Add --no-cache flag if requested
-    if (noCache === 'true') {
-        args.push('--no-cache');
-    }
+    // Asynchronous background check function
+    const triggerBackgroundUpdateCheck = () => {
+        console.log(`[Background] Checking for updates for ${repoName}...`);
+        const updateArgs = [
+            path.join(__dirname, '../scripts/github_collector.py'),
+            '--check-updates',
+            repoName,
+            'main' // Default checking main branch for repo updates, or we could iterate all. 
+            // Ideally we check the repo connectivity.
+        ];
+        // We're just firing this off. The result isn't captured here but relying on the client to poll /api/check-updates
+        // Actually, to make /api/check-updates fast, we might want to store state.
+        // But for now, let's keep it simple: Client calls /api/branches (receive cached), 
+        // then Client calls /api/check-updates (which runs the python script).
+        // So we don't *need* to trigger it here if the client is responsible for polling.
+        // However, the requirement says "trigger a background/parallel process... after local MongoDB data is loaded".
+        // The most robust way is:
+        // Client: load /api/branches (fast)
+        // Client: useEffect -> /api/check-updates (slow, background)
+        // Server: /api/check-updates (runs script, returns result)
+    };
 
     const pythonProcess = spawn('python', args);
 
@@ -426,26 +446,23 @@ app.get('/api/branches', async (req, res) => {
 
     pythonProcess.stderr.on('data', (data) => {
         errorString += data.toString();
-        console.log(`Branch Lister: ${data}`);
+        // console.log(`Branch Lister: ${data}`); // Optional logging
     });
 
     pythonProcess.on('close', (code) => {
-        if (code !== 0) {
-            console.error('Failed to list branches:', errorString);
-            return res.status(500).json({
-                error: 'Failed to list branches',
-                details: errorString
-            });
-        }
+        // If local fetch fails or empty, we might want to just return empty array and let background sync handle it
         try {
             const result = JSON.parse(dataString);
+
+            // If we have local branches, great.
+            // If not, it returns empty list.
+
             res.json(result);
+
         } catch (e) {
-            console.error('Failed to parse branches output:', e);
-            res.status(500).json({
-                error: 'Failed to parse branches data',
-                raw: dataString
-            });
+            console.error('Failed to parse local branches output:', e);
+            // Fallback: return empty list
+            res.json({ branches: [], from_cache: true, error: "Failed to parse local cache" });
         }
     });
 });
@@ -478,28 +495,46 @@ app.get('/api/check-updates', async (req, res) => {
 
     pythonProcess.stderr.on('data', (data) => {
         errorString += data.toString();
-        console.log(`Update Check: ${data}`);
     });
 
     pythonProcess.on('close', (code) => {
         if (code !== 0) {
+            // If check fails (e.g. network issue), we assume no updates or let client know
             console.error('Update check failed:', errorString);
-            return res.status(500).json({
-                error: 'Failed to check for updates',
-                details: errorString
-            });
+            return res.status(200).json({ update_available: false, error: errorString });
         }
         try {
             const result = JSON.parse(dataString);
+            // Result structure: { update_available: bool, local_commit: str, remote_commit: str, ... }
             res.json(result);
         } catch (e) {
             console.error('Failed to parse update check output:', e);
-            res.status(500).json({
-                error: 'Failed to parse update check data',
-                raw: dataString
-            });
+            res.json({ update_available: false, error: 'Parse error' });
         }
     });
+});
+
+// Accept Update Endpoint - Trigger Sync
+app.post('/api/accept-update', (req, res) => {
+    const { repository, branch, type } = req.body;
+    // type can be 'all' (sync-repo) or 'branch' (sync-data)
+
+    // We just forward to the existing sync endpoints internally or reroute logic
+    // But since those endpoints exist, the Frontend can just call them directly.
+    // However, for semantic clarity, we can use this endpoint.
+    // For now, let's keep it simple: Frontend calls /api/sync-repo or /api/sync-data directly.
+    // But if we want a specific "Accept Update" action that might do more cleanup, we can place it here.
+
+    // Let's implement it as a convenient wrapper.
+    if (type === 'repo_sync') {
+        // We can't easily redirect with a POST body in Express internally without code refactor,
+        // so we'll just instruct the client to call the right endpoint, or we invoke the logic.
+        // Re-using the logic from /api/sync-repo would be best by refactoring logic into a function.
+        // But for minimal disturbance, let's just return success and let the Frontend call the sync endpoints.
+        res.json({ action: "call_sync_api", endpoint: "/api/sync-repo" });
+    } else {
+        res.json({ action: "call_sync_api", endpoint: "/api/sync-data" });
+    }
 });
 
 

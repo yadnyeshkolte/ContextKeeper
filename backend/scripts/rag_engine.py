@@ -25,7 +25,10 @@ class ContextRAG:
         self.branch_safe_name = self.branch.replace("/", "_").replace("^", "_").replace("~", "_")
         
         # Repository and branch-specific ChromaDB path
-        chroma_path = f"./chroma_db_{self.repo_name}_{self.branch_safe_name}"
+        base_chroma_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../chroma")
+        chroma_dir_name = f"chroma_db_{self.repo_name}_{self.branch_safe_name}"
+        chroma_path = os.path.join(base_chroma_path, chroma_dir_name)
+        
         print(f"Using ChromaDB path: {chroma_path}", file=sys.stderr)
         
         self.chroma_client = chromadb.PersistentClient(path=chroma_path)

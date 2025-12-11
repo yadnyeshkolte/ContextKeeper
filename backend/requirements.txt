@@ -7,3 +7,4 @@ python-dateutil
 requests
 slack-sdk
 pymongo
+aiohttp
