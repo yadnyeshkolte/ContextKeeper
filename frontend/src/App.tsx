@@ -156,116 +156,114 @@ function App() {
           </Nav.Item>
         </Nav>
 
-        {activeTab === 'query' && (
-          <>
-            <RepositorySelector repository={repository} onRepositoryChange={setRepository} />
-            <SyncStatus repository={repository} branch={branch} onBranchChange={setBranch} />
+        <div style={{ display: activeTab === 'query' ? 'block' : 'none' }}>
+          <RepositorySelector repository={repository} onRepositoryChange={setRepository} />
+          <SyncStatus repository={repository} branch={branch} onBranchChange={setBranch} />
 
-            <Card className="mb-4">
-              <Card.Body>
-                <Form.Group className="mb-3">
-                  <Form.Control
-                    type="text"
-                    size="lg"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Ask: 'Why did we use Redis?'"
-                    onKeyDown={(e) => e.key === 'Enter' && handleQuery()}
-                  />
-                </Form.Group>
-                <Button
-                  variant="primary"
+          <Card className="mb-4">
+            <Card.Body>
+              <Form.Group className="mb-3">
+                <Form.Control
+                  type="text"
                   size="lg"
-                  onClick={handleQuery}
-                  disabled={loading}
-                  className="w-100"
-                >
-                  {loading ? 'Asking AI...' : 'Ask ContextKeeper'}
-                </Button>
-              </Card.Body>
-            </Card>
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Ask: 'Why did we use Redis?'"
+                  onKeyDown={(e) => e.key === 'Enter' && handleQuery()}
+                />
+              </Form.Group>
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={handleQuery}
+                disabled={loading}
+                className="w-100"
+              >
+                {loading ? 'Asking AI...' : 'Ask ContextKeeper'}
+              </Button>
+            </Card.Body>
+          </Card>
 
-            {result && (
-              <>
-                <Card className="mb-4">
-                  <Card.Header as="h5">Answer</Card.Header>
-                  <Card.Body>
-                    <ReactMarkdown>{result.answer}</ReactMarkdown>
-                  </Card.Body>
-                </Card>
+          {result && (
+            <>
+              <Card className="mb-4">
+                <Card.Header as="h5">Answer</Card.Header>
+                <Card.Body>
+                  <ReactMarkdown>{result.answer}</ReactMarkdown>
+                </Card.Body>
+              </Card>
 
-                <Row className="g-3">
-                  <Col md={6}>
+              <Row className="g-3">
+                <Col md={6}>
+                  <Card>
+                    <Card.Header>📚 Sources</Card.Header>
+                    <Card.Body>
+                      {result.sources && result.sources.length > 0 ? (
+                        <ul className="list-unstyled">
+                          {result.sources.map((s, i) => (
+                            <li key={i} className="mb-2">
+                              <a href={s.link} target="_blank" rel="noopener noreferrer">
+                                <Badge bg="secondary" className="me-2">{s.type}</Badge>
+                                {s.title || 'Source'}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-muted">No specific sources found.</p>
+                      )}
+                    </Card.Body>
+                  </Card>
+                </Col>
+
+                <Col md={6}>
+                  <Card>
+                    <Card.Header>👥 Experts</Card.Header>
+                    <Card.Body>
+                      {result.relatedPeople && result.relatedPeople.length > 0 ? (
+                        <div>
+                          {result.relatedPeople.map(p => (
+                            <Badge key={p} bg="info" className="me-2 mb-2">{p}</Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-muted">No experts identified</p>
+                      )}
+                    </Card.Body>
+                  </Card>
+                </Col>
+
+                {result.timeline && result.timeline.length > 0 && (
+                  <Col md={12}>
                     <Card>
-                      <Card.Header>📚 Sources</Card.Header>
+                      <Card.Header>📅 Timeline</Card.Header>
                       <Card.Body>
-                        {result.sources && result.sources.length > 0 ? (
-                          <ul className="list-unstyled">
-                            {result.sources.map((s, i) => (
-                              <li key={i} className="mb-2">
-                                <a href={s.link} target="_blank" rel="noopener noreferrer">
-                                  <Badge bg="secondary" className="me-2">{s.type}</Badge>
-                                  {s.title || 'Source'}
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-muted">No specific sources found.</p>
-                        )}
-                      </Card.Body>
-                    </Card>
-                  </Col>
-
-                  <Col md={6}>
-                    <Card>
-                      <Card.Header>👥 Experts</Card.Header>
-                      <Card.Body>
-                        {result.relatedPeople && result.relatedPeople.length > 0 ? (
-                          <div>
-                            {result.relatedPeople.map(p => (
-                              <Badge key={p} bg="info" className="me-2 mb-2">{p}</Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-muted">No experts identified</p>
-                        )}
-                      </Card.Body>
-                    </Card>
-                  </Col>
-
-                  {result.timeline && result.timeline.length > 0 && (
-                    <Col md={12}>
-                      <Card>
-                        <Card.Header>📅 Timeline</Card.Header>
-                        <Card.Body>
-                          <div className="timeline">
-                            {result.timeline.map((event, i) => (
-                              <div key={i} className="d-flex mb-3">
-                                <div className="me-3 text-muted" style={{ minWidth: '120px' }}>
-                                  {new Date(event.date).toLocaleDateString()}
-                                </div>
-                                <div>
-                                  <a href={event.url} target="_blank" rel="noopener noreferrer">
-                                    {event.event}
-                                  </a>
-                                </div>
+                        <div className="timeline">
+                          {result.timeline.map((event, i) => (
+                            <div key={i} className="d-flex mb-3">
+                              <div className="me-3 text-muted" style={{ minWidth: '120px' }}>
+                                {new Date(event.date).toLocaleDateString()}
                               </div>
-                            ))}
-                          </div>
-                        </Card.Body>
-                      </Card>
-                    </Col>
-                  )}
-                </Row>
-              </>
-            )}
-          </>
-        )}
+                              <div>
+                                <a href={event.url} target="_blank" rel="noopener noreferrer">
+                                  {event.event}
+                                </a>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  </Col>
+                )}
+              </Row>
+            </>
+          )}
+        </div>
 
-        {activeTab === 'graph' && (
+        <div style={{ display: activeTab === 'graph' ? 'block' : 'none' }}>
           <KnowledgeGraph repository={repository} branch={branch} />
-        )}
+        </div>
       </Container>
     </div>
   );
