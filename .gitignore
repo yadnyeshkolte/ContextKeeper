@@ -144,4 +144,3 @@ vite.config.ts.timestamp-*
 __pycache__/
 node_modules/
 venv/
-kestra/docker-compose.yml
