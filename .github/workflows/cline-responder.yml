@@ -57,8 +57,7 @@ jobs:
           CLINE_ADDRESS=$(echo "$INSTANCE_OUTPUT" | grep "Address:" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}:[0-9]+')
           echo "CLINE_ADDRESS=$CLINE_ADDRESS" >> $GITHUB_ENV
           
-          # Configure API key
-          cline config set api-provider=openrouter open-router-api-key=$OPENROUTER_API_KEY --address $CLINE_ADDRESS -v
+
 
       - name: Download analyze script
         if: steps.detect.outputs.hit == 'true'
