@@ -17,7 +17,21 @@ if [ -n "$3" ]; then
 fi
 
 # Ask Cline for its analysis, showing only the summary
-cline -y "$PROMPT: $ISSUE_URL" --mode act $ADDRESS -F json | \
+echo "Starting analysis with Cline..."
+# Use timeout to prevent hanging, capture output to file to avoid pipe buffering issues
+if ! timeout 300 cline -y "$PROMPT: $ISSUE_URL" --mode act $ADDRESS -F json > cline_output.txt 2> cline_error.txt; then
+    echo "TIMEOUT or ERROR executing Cline."
+    echo "--- STDERR ---"
+    cat cline_error.txt
+    echo "--- STDOUT (partial) ---"
+    cat cline_output.txt
+    exit 1
+fi
+
+echo "Cline finished. Parsing output..."
+
+# Process the output
+cat cline_output.txt | \
     sed -n '/^{/,$p' | \
     jq -r 'select(.say == "completion_result") | .text' | \
     sed 's/\\n/\n/g'
