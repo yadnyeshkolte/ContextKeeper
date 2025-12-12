@@ -30,8 +30,7 @@ if [ -n "$3" ]; then
 fi
 
 # Use timeout to prevent hanging, capture output to file to avoid pipe buffering issues
-# Reduced timeout to 60s for debugging
-if ! timeout 60 cline -y "$PROMPT: $ISSUE_URL" --mode act $ADDRESS -F json > cline_output.txt 2> cline_error.txt; then
+if ! timeout 300 cline -y "$PROMPT: $ISSUE_URL" --mode act $ADDRESS -F json > cline_output.txt 2> cline_error.txt; then
     echo "TIMEOUT or ERROR executing Cline." >&2
     echo "--- STDERR ---" >&2
     cat cline_error.txt >&2

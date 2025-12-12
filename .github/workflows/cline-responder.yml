@@ -55,6 +55,7 @@ jobs:
           echo "CLINE_ADDRESS=$CLINE_ADDRESS" >> $GITHUB_ENV
           
           # Configure API key
+          cline config set apiProvider openrouter
           cline config set open-router-api-key=$OPENROUTER_API_KEY --address $CLINE_ADDRESS -v
 
       - name: Download analyze script
