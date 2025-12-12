@@ -46,6 +46,7 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           CLINE_DIR: ${{ runner.temp }}/cline
+        run: |
           # Configure API Provider using auth command
           cline auth --provider openrouter --apikey $OPENROUTER_API_KEY --modelid anthropic/claude-3.5-sonnet
 
