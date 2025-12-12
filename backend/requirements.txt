@@ -8,3 +8,4 @@ requests
 slack-sdk
 pymongo
 aiohttp
+notion-client

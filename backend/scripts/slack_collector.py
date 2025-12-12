@@ -246,7 +246,37 @@ class SlackCollector:
         except Exception as e:
             print(f"Error storing in ChromaDB: {e}", file=sys.stderr)
     
-    def collect_all(self, days_back: int = 30):
+    def collect_recent_activity(self, hours: int = 24) -> Dict[str, Any]:
+        """Collect recent messages for daily summary"""
+        print(f"Collecting Slack activity for last {hours} hours...", file=sys.stderr)
+        
+        all_messages = []
+        for channel in self.slack_channels:
+            channel = channel.strip()
+            if not channel:
+                continue
+                
+            # Helper to get days equivalent of hours (slack api uses timestamp)
+            # We already have collect_channel_messages which takes days_back
+            # let's reuse it with fraction of days or just use it and filter
+            
+            # Since collect_channel_messages uses days_back=30 by default, let's just use it
+            # but we need to pass a float if we want hours? The method expects int in signature but logic might handle float?
+            # Looking at source: oldest = (datetime.now() - timedelta(days=days_back)).timestamp()
+            # timedelta accepts floats for days.
+            
+            days = hours / 24.0
+            messages = self.collect_channel_messages(channel, days_back=days)
+            all_messages.extend(messages)
+            
+        return {
+            "source": "slack",
+            "period_hours": hours,
+            "channels": self.slack_channels,
+            "messages": all_messages
+        }
+
+    
         """Collect all data from Slack channels and store in ChromaDB"""
         print(f"Starting Slack data collection for channels: {', '.join(self.slack_channels)}...", file=sys.stderr)
         
@@ -276,9 +306,14 @@ if __name__ == "__main__":
         # Get repository name from command line or environment
         repo_name = sys.argv[1] if len(sys.argv) > 1 else None
         
-        collector = SlackCollector(repo_name=repo_name)
-        summary = collector.collect_all(days_back=30)
-        print(json.dumps(summary))
+        if len(sys.argv) > 1 and sys.argv[1] == '--recent-activity':
+            collector = SlackCollector(repo_name=repo_name)
+            result = collector.collect_recent_activity(hours=24)
+            print(json.dumps(result))
+        else:
+            collector = SlackCollector(repo_name=repo_name)
+            summary = collector.collect_all(days_back=30)
+            print(json.dumps(summary))
     except Exception as e:
         print(json.dumps({"error": str(e)}), file=sys.stderr)
         sys.exit(1)

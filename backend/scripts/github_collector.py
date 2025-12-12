@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from github import Github
 from github.GithubException import RateLimitExceededException, GithubException
@@ -447,6 +447,73 @@ class GitHubCollector:
         return summary
 
     
+    def collect_recent_activity(self, hours: int = 24) -> Dict[str, Any]:
+        """Collect recent activity for daily summary"""
+        print(f"Collecting activity for last {hours} hours...", file=sys.stderr)
+        
+        # Calculate time threshold
+        since = datetime.now() - timedelta(hours=hours)
+        
+        # 1. Recent Commits
+        recent_commits = []
+        try:
+            commits = self.repo.get_commits(since=since)
+            for commit in commits:
+                recent_commits.append({
+                    "type": "commit",
+                    "message": commit.commit.message,
+                    "author": commit.commit.author.name,
+                    "date": commit.commit.author.date.isoformat(),
+                    "url": commit.html_url
+                })
+        except Exception as e:
+            print(f"Error fetching recent commits: {e}", file=sys.stderr)
+
+        # 2. Recent PRs (created or updated)
+        recent_prs = []
+        try:
+            # We can't filter get_pulls by time, so we fetch recent and filter manually
+            prs = self.repo.get_pulls(state='all', sort='updated', direction='desc')[:20]
+            for pr in prs:
+                if pr.updated_at >= since:
+                    recent_prs.append({
+                        "type": "pull_request",
+                        "title": pr.title,
+                        "state": pr.state,
+                        "author": pr.user.login,
+                        "url": pr.html_url,
+                        "updated_at": pr.updated_at.isoformat()
+                    })
+        except Exception as e:
+            print(f"Error fetching recent PRs: {e}", file=sys.stderr)
+
+        # 3. Recent Issues
+        recent_issues = []
+        try:
+            issues = self.repo.get_issues(state='all', sort='updated', direction='desc')[:20]
+            for issue in issues:
+                if issue.updated_at >= since and not issue.pull_request:
+                    recent_issues.append({
+                        "type": "issue",
+                        "title": issue.title,
+                        "state": issue.state,
+                        "author": issue.user.login,
+                        "url": issue.html_url,
+                        "updated_at": issue.updated_at.isoformat()
+                    })
+        except Exception as e:
+            print(f"Error fetching recent issues: {e}", file=sys.stderr)
+
+        return {
+            "source": "github",
+            "repo": self.github_repo,
+            "period_hours": hours,
+            "commits": recent_commits,
+            "pull_requests": recent_prs,
+            "issues": recent_issues
+        }
+
+    
     @staticmethod
     def check_chromadb_exists(repo_name: str, branch: str = None) -> dict:
         """Check if ChromaDB exists for a repository/branch"""
@@ -703,6 +770,12 @@ if __name__ == "__main__":
             branch = sys.argv[3] if len(sys.argv) > 3 else None
             result = GitHubCollector.check_chromadb_exists(repo_name, branch)
             print(json.dumps(result))
+        elif len(sys.argv) > 1 and sys.argv[1] == '--recent-activity':
+            repo_name = sys.argv[2] if len(sys.argv) > 2 else None
+            collector = GitHubCollector(repo_name=repo_name)
+            # Default to 24 hours
+            result = collector.collect_recent_activity(hours=24)
+            print(json.dumps(result)) # Print JSON to stdout for Kestra to capture
         else:
             # Get repository name and branch from command line or environment
             repo_name = sys.argv[1] if len(sys.argv) > 1 else None

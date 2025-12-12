@@ -16,7 +16,14 @@ services:
           server:
             basic-auth:
               enabled: false
-  
+      # Environment variables for AI Summarizer Flow
+      HUGGINGFACE_API_KEY: "hf_your_key_here"
+      GITHUB_TOKEN: "your_github_token"
+      GITHUB_REPO: "owner/repo"
+      SLACK_TOKEN: "xoxb-your_slack_token"
+      SLACK_CHANNELS: "general"
+      NOTION_TOKEN: "secret_your_notion_token"
+
   postgres:
     image: postgres:14
     environment:
