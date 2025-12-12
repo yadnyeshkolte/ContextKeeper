@@ -1,0 +1,47 @@
+id: ai-summarizer
+namespace: contextkeeper
+
+variables:
+  github_update: "New PR #42: Feature/AI-Agent - Implements basic Kestra flow structure."
+  slack_update: "Channel #general: @user1 asked about the new deployment schedule."
+  notion_update: "Page 'Q3 Roadmap': Added 'AI Integration' to priority list."
+
+tasks:
+  - id: aggregate_data
+    type: io.kestra.core.tasks.debugs.Return
+    format: |
+      Here is the daily digest from your tools:
+      
+      GITHUB: {{ vars.github_update }}
+      
+      SLACK: {{ vars.slack_update }}
+      
+      NOTION: {{ vars.notion_update }}
+
+  - id: summarize_updates
+    type: io.kestra.plugin.core.http.Request
+    uri: "https://router.huggingface.co/hf-inference/models/facebook/bart-large-cnn"
+    method: POST
+    headers:
+      Authorization: "Bearer hf_your_api_key_here"
+    contentType: application/json
+    body: |
+      {
+        "inputs": {{ ("Summarize the following project updates into a concise daily briefing with action items if any:\n\n" ~ outputs.aggregate_data.value) | json }},
+        "parameters": {
+          "max_length": 200,
+          "temperature": 0.7
+        }
+      }
+
+  - id: log-summary
+    type: io.kestra.core.tasks.log.Log
+    message: |
+      --- AI GENERATED SUMMARY ---
+      {{ outputs.summarize_updates.body }}
+      ----------------------------
+
+triggers:
+  - id: daily-schedule
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: "0 9 * * *" # Runs every day at 9 AM
