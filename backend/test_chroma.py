@@ -12,7 +12,7 @@ def check(path, name):
     except Exception as e:
         print(f"Error: {e}")
 
-base = r"c:\Users\Yadnyesh Kolte\ContextKeeper\backend\chroma"
+base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma")
 # Check docs branch
 path = os.path.join(base, "chroma_db_yadnyeshkolte_online-voting-system_docs")
 name = "context_yadnyeshkolte_online-voting-system_docs"

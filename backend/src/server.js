@@ -7,6 +7,7 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const pythonCmd = process.env.PYTHON_CMD || (process.platform === 'win32' ? 'python' : 'python3');
 
 app.use(cors());
 app.use(express.json());
@@ -58,7 +59,10 @@ app.post('/api/query', async (req, res) => {
         args.push(branchName);
     }
 
-    const pythonProcess = spawn('python', args);
+    // Determine python command based on OS (Already defined globally, but cleaning up previous edit if needed or just using global)
+    // simplifying to use global pythonCmd
+
+    const pythonProcess = spawn(pythonCmd, args);
 
     let dataString = '';
 
@@ -115,7 +119,7 @@ app.get('/api/knowledge-graph', async (req, res) => {
         args.push(branchName);
     }
 
-    const pythonProcess = spawn('python', args);
+    const pythonProcess = spawn(pythonCmd, args);
 
     let dataString = '';
     let errorString = '';
@@ -174,7 +178,7 @@ app.post('/api/sync-repo', async (req, res) => {
     }
 
     const args = [path.join(__dirname, '../scripts/github_collector.py'), '--sync-all-branches', repoName];
-    const pythonProcess = spawn('python', args);
+    const pythonProcess = spawn(pythonCmd, args);
 
     let dataString = '';
     let errorString = '';
@@ -242,7 +246,7 @@ app.post('/api/sync-data', async (req, res) => {
         args.push(branchName);
     }
 
-    const pythonProcess = spawn('python', args);
+    const pythonProcess = spawn(pythonCmd, args);
 
     let dataString = '';
     let errorString = '';
@@ -305,7 +309,7 @@ app.post('/api/collect/slack', async (req, res) => {
         args.push(branchName);
     }
 
-    const pythonProcess = spawn('python', args);
+    const pythonProcess = spawn(pythonCmd, args);
 
     let dataString = '';
     let errorString = '';
@@ -361,7 +365,7 @@ app.get('/api/status', async (req, res) => {
         args.push(branchName);
     }
 
-    const pythonProcess = spawn('python', args, { cwd: path.join(__dirname, '..') });
+    const pythonProcess = spawn(pythonCmd, args, { cwd: path.join(__dirname, '..') });
 
     let dataString = '';
     let errorString = '';
@@ -435,7 +439,7 @@ app.get('/api/branches', async (req, res) => {
         // Server: /api/check-updates (runs script, returns result)
     };
 
-    const pythonProcess = spawn('python', args);
+    const pythonProcess = spawn(pythonCmd, args);
 
     let dataString = '';
     let errorString = '';
@@ -484,7 +488,7 @@ app.get('/api/check-updates', async (req, res) => {
         branchName
     ];
 
-    const pythonProcess = spawn('python', args);
+    const pythonProcess = spawn(pythonCmd, args);
 
     let dataString = '';
     let errorString = '';
