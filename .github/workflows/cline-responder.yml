@@ -58,6 +58,11 @@ jobs:
           echo "CLINE_ADDRESS=$CLINE_ADDRESS" >> $GITHUB_ENV
           
 
+      - name: Install System Dependencies
+        if: steps.detect.outputs.hit == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 xvfb
 
       - name: Download analyze script
         if: steps.detect.outputs.hit == 'true'
@@ -78,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           
-          RESULT=$(./analyze-issue.sh "${ISSUE_URL}" "Analyze this issue. The user asked: ${COMMENT}" "$CLINE_ADDRESS")
+          RESULT=$(xvfb-run --auto-servernum ./analyze-issue.sh "${ISSUE_URL}" "Analyze this issue. The user asked: ${COMMENT}" "$CLINE_ADDRESS")
           
           {
             echo 'result<<EOF'
