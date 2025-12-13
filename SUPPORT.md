@@ -5,7 +5,7 @@
 - Check [Documentation](./docs)
 - Search [existing issues](../../issues)
 - Join our [Discord/Slack]
-- Email: support@example.com
+- Email: yadnyeshkolte@gmail.com
 
 ## How to Ask for Help
 

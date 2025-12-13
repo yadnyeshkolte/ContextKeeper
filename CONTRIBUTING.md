@@ -47,7 +47,7 @@ Please follow these steps to have your contribution considered by the maintainer
 ## Development Environment Setup
 
 1.  Fork the repository.
-2.  Clone your fork: `git clone https://github.com/YOUR-USERNAME/ContextKeeper.git`
+2.  Clone your fork: `git clone https://github.com/yadnyeshkolte/ContextKeeper.git`
 3.  Set up the [backend](./README.md#backend-setup) and [frontend](./README.md#frontend-setup) as described in the README.
 
 ## Styleguides

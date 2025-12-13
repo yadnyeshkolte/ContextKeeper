@@ -163,11 +163,17 @@ We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for 
 
 This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
 
-## � Support
+## 💬 Support
 
 For support, please refer to [SUPPORT.md](SUPPORT.md) or open an issue in the issue tracker.
 
-## � Acknowledgments
+## 👤 Author
+
+**Yadnyesh Kolte**
+- GitHub: [@yadnyeshkolte](https://github.com/yadnyeshkolte)
+- Email: yadnyeshkolte@gmail.com
+
+## 🙏 Acknowledgments
 
 - Hugging Face for the amazing models.
 - The Open Source community for the tools and libraries used in this project.
