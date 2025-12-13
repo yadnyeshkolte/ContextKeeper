@@ -541,6 +541,418 @@ app.post('/api/accept-update', (req, res) => {
     }
 });
 
+// ============================================================================
+// AI AGENTS API ENDPOINTS
+// ============================================================================
+
+// Job tracking storage (in-memory, could be moved to MongoDB for persistence)
+const agentJobs = new Map();
+
+// Helper function to create a job
+function createJob(type, params) {
+    const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const job = {
+        jobId,
+        type,
+        params,
+        status: 'queued',
+        progress: 0,
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+        result: null,
+        error: null
+    };
+    agentJobs.set(jobId, job);
+    return jobId;
+}
+
+// Helper function to update job
+function updateJob(jobId, updates) {
+    const job = agentJobs.get(jobId);
+    if (job) {
+        Object.assign(job, updates);
+        agentJobs.set(jobId, job);
+    }
+}
+
+// POST /api/agents/github - Run GitHub agent
+app.post('/api/agents/github', async (req, res) => {
+    const { repository, branch, hours } = req.body;
+    const repoName = repository || process.env.GITHUB_REPO;
+    const branchName = branch || 'main';
+    const hoursBack = hours || 24;
+
+    const jobId = createJob('github', { repository: repoName, branch: branchName, hours: hoursBack });
+
+    // Return job ID immediately
+    res.json({ jobId, status: 'queued' });
+
+    // Run agent asynchronously
+    updateJob(jobId, { status: 'running', progress: 10 });
+
+    const args = [
+        path.join(__dirname, '../agents/github_agent.py'),
+        '--repo', repoName,
+        '--branch', branchName,
+        '--hours', hoursBack.toString()
+    ];
+
+    const pythonProcess = spawn(pythonCmd, args);
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+        updateJob(jobId, { progress: 50 });
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.error(`GitHub Agent Error: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            updateJob(jobId, {
+                status: 'failed',
+                error: errorString || 'Agent execution failed',
+                completedAt: new Date().toISOString(),
+                progress: 100
+            });
+        } else {
+            try {
+                const result = JSON.parse(dataString);
+                updateJob(jobId, {
+                    status: 'completed',
+                    result,
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            } catch (e) {
+                updateJob(jobId, {
+                    status: 'failed',
+                    error: 'Failed to parse agent output',
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            }
+        }
+    });
+});
+
+// POST /api/agents/slack - Run Slack agent
+app.post('/api/agents/slack', async (req, res) => {
+    const { repository, hours } = req.body;
+    const repoName = repository || process.env.GITHUB_REPO;
+    const hoursBack = hours || 24;
+
+    const jobId = createJob('slack', { repository: repoName, hours: hoursBack });
+    res.json({ jobId, status: 'queued' });
+
+    updateJob(jobId, { status: 'running', progress: 10 });
+
+    const args = [
+        path.join(__dirname, '../agents/slack_agent.py'),
+        '--repo', repoName,
+        '--hours', hoursBack.toString()
+    ];
+
+    const pythonProcess = spawn(pythonCmd, args);
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+        updateJob(jobId, { progress: 50 });
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.error(`Slack Agent Error: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            updateJob(jobId, {
+                status: 'failed',
+                error: errorString || 'Agent execution failed',
+                completedAt: new Date().toISOString(),
+                progress: 100
+            });
+        } else {
+            try {
+                const result = JSON.parse(dataString);
+                updateJob(jobId, {
+                    status: 'completed',
+                    result,
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            } catch (e) {
+                updateJob(jobId, {
+                    status: 'failed',
+                    error: 'Failed to parse agent output',
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            }
+        }
+    });
+});
+
+// POST /api/agents/notion - Run Notion agent
+app.post('/api/agents/notion', async (req, res) => {
+    const { hours } = req.body;
+    const hoursBack = hours || 24;
+
+    const jobId = createJob('notion', { hours: hoursBack });
+    res.json({ jobId, status: 'queued' });
+
+    updateJob(jobId, { status: 'running', progress: 10 });
+
+    const args = [
+        path.join(__dirname, '../agents/notion_agent.py'),
+        '--hours', hoursBack.toString()
+    ];
+
+    const pythonProcess = spawn(pythonCmd, args);
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+        updateJob(jobId, { progress: 50 });
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.error(`Notion Agent Error: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            updateJob(jobId, {
+                status: 'failed',
+                error: errorString || 'Agent execution failed',
+                completedAt: new Date().toISOString(),
+                progress: 100
+            });
+        } else {
+            try {
+                const result = JSON.parse(dataString);
+                updateJob(jobId, {
+                    status: 'completed',
+                    result,
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            } catch (e) {
+                updateJob(jobId, {
+                    status: 'failed',
+                    error: 'Failed to parse agent output',
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            }
+        }
+    });
+});
+
+// POST /api/agents/summarize - Run AI Summarizer (all agents)
+app.post('/api/agents/summarize', async (req, res) => {
+    const { repository, branch, hours } = req.body;
+    const repoName = repository || process.env.GITHUB_REPO;
+    const branchName = branch || 'main';
+    const hoursBack = hours || 24;
+
+    const jobId = createJob('summarize', { repository: repoName, branch: branchName, hours: hoursBack });
+    res.json({ jobId, status: 'queued' });
+
+    updateJob(jobId, { status: 'running', progress: 10 });
+
+    const args = [
+        path.join(__dirname, '../agents/ai_summarizer.py'),
+        '--repo', repoName,
+        '--branch', branchName,
+        '--hours', hoursBack.toString()
+    ];
+
+    const pythonProcess = spawn(pythonCmd, args);
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+        updateJob(jobId, { progress: 60 });
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.log(`AI Summarizer: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            updateJob(jobId, {
+                status: 'failed',
+                error: errorString || 'Summarizer execution failed',
+                completedAt: new Date().toISOString(),
+                progress: 100
+            });
+        } else {
+            try {
+                const result = JSON.parse(dataString);
+                updateJob(jobId, {
+                    status: 'completed',
+                    result,
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            } catch (e) {
+                updateJob(jobId, {
+                    status: 'failed',
+                    error: 'Failed to parse summarizer output',
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            }
+        }
+    });
+});
+
+// POST /api/agents/decide - Run Decision Engine
+app.post('/api/agents/decide', async (req, res) => {
+    const { summarizerJobId } = req.body;
+
+    if (!summarizerJobId) {
+        return res.status(400).json({ error: 'summarizerJobId is required' });
+    }
+
+    const summarizerJob = agentJobs.get(summarizerJobId);
+    if (!summarizerJob || summarizerJob.status !== 'completed') {
+        return res.status(400).json({ error: 'Summarizer job not found or not completed' });
+    }
+
+    const jobId = createJob('decide', { summarizerJobId });
+    res.json({ jobId, status: 'queued' });
+
+    updateJob(jobId, { status: 'running', progress: 10 });
+
+    // Write summarizer output to temp file
+    const tempFile = path.join(__dirname, `../temp_summarizer_${jobId}.json`);
+    require('fs').writeFileSync(tempFile, JSON.stringify(summarizerJob.result));
+
+    const args = [
+        path.join(__dirname, '../agents/decision_engine.py'),
+        '--input', tempFile
+    ];
+
+    const pythonProcess = spawn(pythonCmd, args);
+    let dataString = '';
+    let errorString = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        dataString += data.toString();
+        updateJob(jobId, { progress: 50 });
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        errorString += data.toString();
+        console.log(`Decision Engine: ${data}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        // Clean up temp file
+        try {
+            require('fs').unlinkSync(tempFile);
+        } catch (e) {
+            console.error('Failed to delete temp file:', e);
+        }
+
+        if (code !== 0) {
+            updateJob(jobId, {
+                status: 'failed',
+                error: errorString || 'Decision engine execution failed',
+                completedAt: new Date().toISOString(),
+                progress: 100
+            });
+        } else {
+            try {
+                const result = JSON.parse(dataString);
+                updateJob(jobId, {
+                    status: 'completed',
+                    result,
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            } catch (e) {
+                updateJob(jobId, {
+                    status: 'failed',
+                    error: 'Failed to parse decision engine output',
+                    completedAt: new Date().toISOString(),
+                    progress: 100
+                });
+            }
+        }
+    });
+});
+
+// GET /api/agents/status/:jobId - Get job status
+app.get('/api/agents/status/:jobId', (req, res) => {
+    const { jobId } = req.params;
+    const job = agentJobs.get(jobId);
+
+    if (!job) {
+        return res.status(404).json({ error: 'Job not found' });
+    }
+
+    res.json(job);
+});
+
+// GET /api/agents/jobs - List all jobs
+app.get('/api/agents/jobs', (req, res) => {
+    const { type, status, limit } = req.query;
+    let jobs = Array.from(agentJobs.values());
+
+    // Filter by type
+    if (type) {
+        jobs = jobs.filter(j => j.type === type);
+    }
+
+    // Filter by status
+    if (status) {
+        jobs = jobs.filter(j => j.status === status);
+    }
+
+    // Sort by start time (newest first)
+    jobs.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+
+    // Limit results
+    if (limit) {
+        jobs = jobs.slice(0, parseInt(limit));
+    }
+
+    res.json({ jobs, total: jobs.length });
+});
+
+// DELETE /api/agents/jobs/:jobId - Delete a job
+app.delete('/api/agents/jobs/:jobId', (req, res) => {
+    const { jobId } = req.params;
+
+    if (agentJobs.has(jobId)) {
+        agentJobs.delete(jobId);
+        res.json({ success: true, message: 'Job deleted' });
+    } else {
+        res.status(404).json({ error: 'Job not found' });
+    }
+});
+
+// ============================================================================
+// END AI AGENTS API ENDPOINTS
+// ============================================================================
+
+
+
 
 app.listen(PORT, () => {
 

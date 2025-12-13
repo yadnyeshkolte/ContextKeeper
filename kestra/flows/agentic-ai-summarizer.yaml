@@ -1,0 +1,264 @@
+id: agentic-ai-summarizer
+namespace: contextkeeper
+
+description: |
+  Agentic AI-powered workflow with autonomous decision-making, dynamic task generation,
+  intelligent error recovery, and confidence-based escalation.
+
+inputs:
+  - id: hours
+    type: INT
+    defaults: 24
+    description: Number of hours to look back for activity
+
+tasks:
+  # Task 1: Run AI Summarizer
+  - id: run_ai_summarizer
+    type: io.kestra.plugin.scripts.python.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    beforeCommands:
+      - pip install --quiet PyGithub slack-sdk notion-client python-dotenv sentence-transformers chromadb requests huggingface_hub
+    commands:
+      - cd /app/backend
+      - python agents/ai_summarizer.py --hours {{ inputs.hours }} --output /tmp/summarizer_output.json
+    outputFiles:
+      - /tmp/summarizer_output.json
+    env:
+      GITHUB_TOKEN: "{{ envs.GITHUB_TOKEN }}"
+      GITHUB_REPO: "{{ envs.GITHUB_REPO }}"
+      SLACK_TOKEN: "{{ envs.SLACK_TOKEN }}"
+      SLACK_CHANNELS: "{{ envs.SLACK_CHANNELS }}"
+      NOTION_TOKEN: "{{ envs.NOTION_TOKEN }}"
+      HUGGINGFACE_API_KEY: "{{ envs.HUGGINGFACE_API_KEY }}"
+      HUGGINGFACE_MODEL: "{{ envs.HUGGINGFACE_MODEL }}"
+    retry:
+      type: constant
+      interval: PT30S
+      maxAttempt: 3
+      warningOnRetry: true
+
+  # Task 2: Run Decision Engine
+  - id: run_decision_engine
+    type: io.kestra.plugin.scripts.python.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    beforeCommands:
+      - pip install --quiet python-dotenv
+    commands:
+      - cd /app/backend
+      - python agents/decision_engine.py --input /tmp/summarizer_output.json --output /tmp/decisions.json
+    inputFiles:
+      /tmp/summarizer_output.json: "{{ outputs.run_ai_summarizer.outputFiles['/tmp/summarizer_output.json'] }}"
+    outputFiles:
+      - /tmp/decisions.json
+    env:
+      DECISION_CONFIDENCE_THRESHOLD: "0.6"
+
+  # Task 3: Analyze Urgency and Route
+  - id: analyze_urgency
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    script: |
+      import json
+      
+      # Load decision data
+      with open('/tmp/decisions.json', 'r') as f:
+          decisions = json.load(f)
+      
+      urgency_level = decisions['urgency_analysis']['urgency_level']
+      urgency_score = decisions['urgency_analysis']['urgency_score']
+      urgent_items = decisions['urgency_analysis']['urgent_items_count']
+      
+      # Output for routing
+      print(json.dumps({
+          'urgency_level': urgency_level,
+          'urgency_score': urgency_score,
+          'urgent_items': urgent_items,
+          'should_escalate': urgency_level in ['critical', 'high'] and urgent_items > 3
+      }))
+    inputFiles:
+      /tmp/decisions.json: "{{ outputs.run_decision_engine.outputFiles['/tmp/decisions.json'] }}"
+
+  # Task 4: Generate Dynamic Notification Tasks
+  - id: generate_notifications
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    script: |
+      import json
+      
+      # Load decision data
+      with open('/tmp/decisions.json', 'r') as f:
+          decisions = json.load(f)
+      
+      notifications = []
+      
+      # Generate notifications for high-confidence recommendations
+      for rec in decisions.get('high_confidence_recommendations', []):
+          if rec['confidence'] >= 0.8:  # Auto-execute threshold
+              notifications.append({
+                  'type': 'auto_execute',
+                  'title': rec['title'],
+                  'description': rec['description'],
+                  'priority': rec['priority'],
+                  'confidence': rec['confidence'],
+                  'actions': rec.get('action_items', [])
+              })
+          elif rec['confidence'] >= 0.6:  # Notify threshold
+              notifications.append({
+                  'type': 'notify',
+                  'title': rec['title'],
+                  'description': rec['description'],
+                  'priority': rec['priority'],
+                  'confidence': rec['confidence']
+              })
+      
+      print(json.dumps({'notifications': notifications, 'count': len(notifications)}))
+    inputFiles:
+      /tmp/decisions.json: "{{ outputs.run_decision_engine.outputFiles['/tmp/decisions.json'] }}"
+
+  # Task 5: Conditional Escalation (if urgency is high)
+  - id: check_escalation
+    type: io.kestra.plugin.core.flow.If
+    condition: "{{ json(outputs.analyze_urgency.vars.stdout).should_escalate }}"
+    then:
+      - id: escalate_to_slack
+        type: io.kestra.plugin.notifications.slack.SlackIncomingWebhook
+        url: "{{ envs.SLACK_WEBHOOK_URL }}"
+        payload: |
+          {
+            "text": "⚠️ *URGENT: High Priority Items Detected*",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🚨 Urgent AI Agent Alert"
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Urgency Level:*\n{{ json(outputs.analyze_urgency.vars.stdout).urgency_level }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Urgent Items:*\n{{ json(outputs.analyze_urgency.vars.stdout).urgent_items }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Action Required:* Please review the AI agent recommendations immediately."
+                }
+              }
+            ]
+          }
+
+  # Task 6: Auto-Execute High Confidence Actions
+  - id: auto_execute_actions
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ json(outputs.generate_notifications.vars.stdout).notifications }}"
+    tasks:
+      - id: process_notification
+        type: io.kestra.plugin.core.flow.If
+        condition: "{{ taskrun.value.type == 'auto_execute' and taskrun.value.confidence >= 0.8 }}"
+        then:
+          - id: send_auto_notification
+            type: io.kestra.plugin.core.log.Log
+            message: |
+              ✅ AUTO-EXECUTING: {{ taskrun.value.title }}
+              Confidence: {{ taskrun.value.confidence }}
+              Priority: {{ taskrun.value.priority }}
+              Actions: {{ taskrun.value.actions }}
+
+  # Task 7: Generate Final Report
+  - id: generate_report
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    script: |
+      import json
+      from datetime import datetime
+      
+      # Load results
+      with open('/tmp/summarizer_output.json', 'r') as f:
+          summarizer_data = json.load(f)
+      
+      with open('/tmp/decisions.json', 'r') as f:
+          decisions_data = json.load(f)
+      
+      # Generate report
+      report = []
+      report.append("=" * 80)
+      report.append("AGENTIC AI WORKFLOW REPORT")
+      report.append("=" * 80)
+      report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+      report.append(f"Period: Last {summarizer_data.get('metadata', {}).get('period_hours', 24)} hours")
+      report.append("")
+      
+      # Unified Summary
+      unified = summarizer_data.get('unified_summary', {})
+      if unified.get('unified_summary', {}).get('success'):
+          report.append("--- EXECUTIVE SUMMARY ---")
+          report.append(unified['unified_summary']['summary'])
+          report.append("")
+      
+      # Urgency Analysis
+      if decisions_data.get('success'):
+          urgency = decisions_data.get('urgency_analysis', {})
+          report.append("--- URGENCY ANALYSIS ---")
+          report.append(f"Level: {urgency.get('urgency_level', 'unknown').upper()}")
+          report.append(f"Score: {urgency.get('urgency_score', 0):.2f}/1.0")
+          report.append(f"Urgent Items: {urgency.get('urgent_items_count', 0)}")
+          report.append("")
+          
+          # Auto-Executed Actions
+          report.append("--- AUTONOMOUS ACTIONS TAKEN ---")
+          notifications = json.loads(outputs.generate_notifications.vars.stdout)
+          auto_count = sum(1 for n in notifications['notifications'] if n['type'] == 'auto_execute')
+          report.append(f"Auto-executed {auto_count} high-confidence recommendations")
+          report.append("")
+      
+      # Print report
+      final_report = "\n".join(report)
+      print(final_report)
+      
+      # Save to file
+      with open('/tmp/final_report.txt', 'w') as f:
+          f.write(final_report)
+    inputFiles:
+      /tmp/summarizer_output.json: "{{ outputs.run_ai_summarizer.outputFiles['/tmp/summarizer_output.json'] }}"
+      /tmp/decisions.json: "{{ outputs.run_decision_engine.outputFiles['/tmp/decisions.json'] }}"
+    outputFiles:
+      - /tmp/final_report.txt
+
+  # Task 8: Log Summary
+  - id: log_summary
+    type: io.kestra.core.tasks.log.Log
+    message: |
+      {{ outputs.generate_report.vars.stdout }}
+
+triggers:
+  - id: daily_schedule
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: "0 9 * * *"  # Run every day at 9 AM
+    inputs:
+      hours: 24
+
+  - id: hourly_check
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: "0 * * * *"  # Run every hour
+    inputs:
+      hours: 1

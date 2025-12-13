@@ -9,3 +9,4 @@ slack-sdk
 pymongo
 aiohttp
 notion-client
+transformers

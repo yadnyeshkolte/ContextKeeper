@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from github import Github
 from github.GithubException import RateLimitExceededException, GithubException
@@ -451,8 +451,8 @@ class GitHubCollector:
         """Collect recent activity for daily summary"""
         print(f"Collecting activity for last {hours} hours...", file=sys.stderr)
         
-        # Calculate time threshold
-        since = datetime.now() - timedelta(hours=hours)
+        # Calculate time threshold (timezone-aware for GitHub API compatibility)
+        since = datetime.now(timezone.utc) - timedelta(hours=hours)
         
         # 1. Recent Commits
         recent_commits = []
