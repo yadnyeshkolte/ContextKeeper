@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, Button, Form, ProgressBar, Alert, Badge, Spinner, Row, Col } from 'react-bootstrap';
+import { Card, Button, Form, ProgressBar, Alert, Badge, Spinner } from 'react-bootstrap';
 
 interface AgentRunnerProps {
     agentType: 'github' | 'slack' | 'notion' | 'summarize';

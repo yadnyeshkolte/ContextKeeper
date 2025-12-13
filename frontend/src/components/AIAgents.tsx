@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Container, Nav, Tab, Row, Col, Button, Alert } from 'react-bootstrap';
+import { Container, Nav, Tab, Button, Alert } from 'react-bootstrap';
 import AgentRunner from './AgentRunner';
 import DecisionPanel from './DecisionPanel';
 
@@ -9,8 +9,8 @@ interface AIAgentsProps {
 }
 
 export default function AIAgents({ repository, branch }: AIAgentsProps) {
-    const [summarizerJobId, setSummarizerJobId] = useState<string | null>(null);
-    const [decisionJobId, setDecisionJobId] = useState<string | null>(null);
+    const [summarizerJobId] = useState<string | null>(null);
+    const [, setDecisionJobId] = useState<string | null>(null);
     const [decisionResult, setDecisionResult] = useState<any>(null);
 
     const runDecisionEngine = async () => {
