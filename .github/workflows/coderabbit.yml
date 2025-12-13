@@ -13,4 +13,4 @@ jobs:
       - name: CodeRabbit Review
         uses: coderabbitai/ai-pr-reviewer@latest
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.CODERABBIT_TOKEN }}
