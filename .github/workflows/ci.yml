@@ -53,5 +53,12 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Run Security Scan
-      run: npm audit
+    - name: Run Security Scan Backend
+      run: |
+        cd backend
+        npm audit
+
+    - name: Run Security Scan Frontend
+      run: |
+        cd frontend
+        npm audit

@@ -11,6 +11,6 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: CodeRabbit Review
-        uses: coderabbitai/coderabbit-action@v1
+        uses: coderabbitai/ai-pr-reviewer@latest
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
