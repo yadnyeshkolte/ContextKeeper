@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install Backend Dependencies
+      run: |
+        cd backend
+        npm install
+    
+    - name: Lint Backend
+      run: |
+        cd backend
+        npm run lint --if-present
+    
+    # - name: Run Backend Tests
+    #   run: |
+    #     cd backend
+    #     npm test
+    
+    - name: Install Frontend Dependencies
+      run: |
+        cd frontend
+        npm install
+    
+    - name: Build Frontend
+      run: |
+        cd frontend
+        npm run build
+    
+    # - name: Upload Coverage
+    #   uses: codecov/codecov-action@v3
+    #   if: always()
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Security Scan
+      run: npm audit

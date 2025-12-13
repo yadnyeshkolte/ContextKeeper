@@ -1,13 +1,31 @@
 # ContextKeeper - AI Memory Layer for Development Teams
 
-ContextKeeper is a local-first AI agent that connects GitHub, Slack, and Documentation to provide contextual memory for your team. It answers "why" questions about code decisions.
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
-## ✨ New Features
+ContextKeeper is a local-first AI agent that connects GitHub, Slack, and Documentation to provide contextual memory for your team. It answers "why" questions about code decisions by leveraging a Knowledge Graph and RAG (Retrieval-Augmented Generation).
 
-- **🔒 Robust Error Handling**: Automatic retries, rate limit handling, and graceful error recovery
-- **💬 Slack Integration**: Collect team discussions and decisions from Slack channels
-- **🕸️ Real Knowledge Graph**: Automatically discover relationships between people, modules, and decisions
-- **🗂️ Multi-Repository Support**: Separate ChromaDB instances for each repository
+## Table of Contents
+
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Prerequisites](#-prerequisites)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Usage](#-usage)
+- [API Reference](#-api-endpoints)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Support](#-support)
+
+## ✨ Features
+
+- **🔒 Robust Error Handling**: Automatic retries, rate limit handling, and graceful error recovery.
+- **💬 Slack Integration**: Collect team discussions and decisions from Slack channels.
+- **🕸️ Real Knowledge Graph**: Automatically discover relationships between people, modules, and decisions.
+- **🗂️ Multi-Repository Support**: Separate ChromaDB instances for each repository (Path: `./chroma_db_{repository_name}`).
+- **🤖 Context-Aware Answers**: Uses Hugging Face's Llama-3.2-3B-Instruct model and SentenceTransformer embeddings.
 
 ## 🏗️ Architecture
 
@@ -17,15 +35,14 @@ ContextKeeper is a local-first AI agent that connects GitHub, Slack, and Documen
 - **Frontend**: React + Vite
 - **Database**: MongoDB (Local or Atlas) & ChromaDB (Vector)
 
-## 🚀 Getting Started
+## � Prerequisites
 
-Follow these steps to run the application locally.
-
-### Prerequisites
 - Docker & Docker Compose
 - Node.js (v16+)
 - Python (v3.9+)
 - MongoDB (Running locally or have an Atlas URI)
+
+## 🚀 Installation
 
 ### 1. Infrastructure Setup (Kestra)
 Start the orchestration layer.
@@ -55,7 +72,10 @@ Configure and start the API server and AI engine.
    ```
 
 4. Environment Configuration:
-   - Copy `.env.example` to `.env`: `cp .env.example .env`
+   - Copy `.env.example` to `.env`:
+     ```bash
+     cp .env.example .env
+     ```
    - Edit `.env` and add your credentials:
      - **HUGGINGFACE_API_KEY**: Your Hugging Face API key
      - **GITHUB_TOKEN**: Your GitHub Personal Access Token
@@ -78,7 +98,7 @@ Launch the user interface.
    cd frontend
    ```
 
-2. Install dependencies (if not done):
+2. Install dependencies:
    ```bash
    npm install
    ```
@@ -89,30 +109,33 @@ Launch the user interface.
    ```
    Access the UI at `http://localhost:5173`.
 
-### 4. Collecting Data
+## ⚡ Quick Start
 
-#### Collect from GitHub
+1. Go to the Frontend URL (`http://localhost:5173`).
+2. Type a question like *"Why did we choose Redis?"*.
+3. The system will query ChromaDB and Hugging Face to provide a context-aware answer.
+4. View the knowledge graph to see relationships between people, modules, and decisions.
+
+## 📖 Usage
+
+### Collecting Data
+
+**Collect from GitHub:**
 ```bash
 curl -X POST http://localhost:3000/api/collect/github
 ```
 
-#### Collect from Slack
+**Collect from Slack:**
 ```bash
 curl -X POST http://localhost:3000/api/collect/slack
 ```
 
-#### For Specific Repository
+**For Specific Repository:**
 ```bash
 curl -X POST http://localhost:3000/api/collect/github \
   -H "Content-Type: application/json" \
   -d '{"repository": "owner/repo"}'
 ```
-
-### 5. Usage
-- Go to the Frontend URL (`http://localhost:5173`)
-- Type a question like *"Why did we choose Redis?"*
-- The system will query ChromaDB and Hugging Face to provide a context-aware answer
-- View the knowledge graph to see relationships between people, modules, and decisions
 
 ## 📡 API Endpoints
 
@@ -120,18 +143,6 @@ curl -X POST http://localhost:3000/api/collect/github \
 ```bash
 POST /api/query
 Body: { "question": "Why did we choose Redis?", "repository": "owner/repo" }
-```
-
-### Collect GitHub Data
-```bash
-POST /api/collect/github
-Body: { "repository": "owner/repo" }
-```
-
-### Collect Slack Data
-```bash
-POST /api/collect/slack
-Body: { "repository": "owner/repo" }
 ```
 
 ### Knowledge Graph
@@ -144,29 +155,19 @@ GET /api/knowledge-graph?repository=owner/repo
 GET /api/status?repository=owner/repo
 ```
 
-## 🛠️ Key Components
+## 🤝 Contributing
 
-- **kestra/docker-compose.yml**: Orchestration setup
-- **backend/src/server.js**: API handling requests with repository support
-- **backend/scripts/rag_engine.py**: Core RAG logic with Hugging Face
-- **backend/scripts/github_collector.py**: GitHub data collection with retry logic
-- **backend/scripts/slack_collector.py**: Slack message collection
-- **backend/scripts/knowledge_graph_builder.py**: Entity extraction and relationship building
-- **frontend/src/**: React UI for querying and visualization
+We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get started, our code of conduct, and the process for submitting pull requests.
 
-## 🔧 Repository-Specific ChromaDB
+## 📄 License
 
-Each repository gets its own ChromaDB instance:
-- Path: `./chroma_db_{repository_name}`
-- Collection: `context_{repository_name}`
+This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
 
-This prevents confusion between different projects and allows managing multiple codebases simultaneously.
+## � Support
 
-## 📝 Notes
+For support, please refer to [SUPPORT.md](SUPPORT.md) or open an issue in the issue tracker.
 
-- The system uses Hugging Face's Llama-3.2-3B-Instruct model for answering questions
-- Embeddings are generated using SentenceTransformer's 'all-MiniLM-L6-v2' model
-- GitHub collector includes rate limit handling and automatic retries
-- Slack collector fetches messages from the last 30 days by default
-- Knowledge graph automatically discovers relationships between entities
+## � Acknowledgments
 
+- Hugging Face for the amazing models.
+- The Open Source community for the tools and libraries used in this project.

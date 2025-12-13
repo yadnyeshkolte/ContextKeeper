@@ -144,3 +144,28 @@ vite.config.ts.timestamp-*
 __pycache__/
 node_modules/
 venv/
+
+# --- Additional OSS Standard Ignored Files ---
+# Python
+*.egg-info/
+*.pyo
+*.cover
+.coverage
+
+# Build
+build/
+vendor/
+
+# Environment Variables
+.env.local
+*.key
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS System Files
+.DS_Store
+Thumbs.db
