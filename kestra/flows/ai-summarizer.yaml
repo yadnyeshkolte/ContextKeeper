@@ -1,47 +1,154 @@
 id: ai-summarizer
 namespace: contextkeeper
 
-variables:
-  github_update: "New PR #42: Feature/AI-Agent - Implements basic Kestra flow structure."
-  slack_update: "Channel #general: @user1 asked about the new deployment schedule."
-  notion_update: "Page 'Q3 Roadmap': Added 'AI Integration' to priority list."
+description: |
+  AI-powered summarization system that collects data from GitHub, Slack, and Notion,
+  generates AI summaries using Hugging Face models, and provides intelligent recommendations.
+
+inputs:
+  - id: hours
+    type: INT
+    defaults: 24
+    description: Number of hours to look back for activity
 
 tasks:
-  - id: aggregate_data
-    type: io.kestra.core.tasks.debugs.Return
-    format: |
-      Here is the daily digest from your tools:
-      
-      GITHUB: {{ vars.github_update }}
-      
-      SLACK: {{ vars.slack_update }}
-      
-      NOTION: {{ vars.notion_update }}
+  # Task 1: Run AI Summarizer (aggregates all agents)
+  - id: run_ai_summarizer
+    type: io.kestra.plugin.scripts.python.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    beforeCommands:
+      - pip install --quiet PyGithub slack-sdk notion-client python-dotenv sentence-transformers chromadb requests huggingface_hub
+    commands:
+      - cd /app/backend
+      - python agents/ai_summarizer.py --hours {{ inputs.hours }} --output /tmp/summarizer_output.json
+    outputFiles:
+      - /tmp/summarizer_output.json
+    env:
+      GITHUB_TOKEN: "{{ envs.GITHUB_TOKEN }}"
+      GITHUB_REPO: "{{ envs.GITHUB_REPO }}"
+      SLACK_TOKEN: "{{ envs.SLACK_TOKEN }}"
+      SLACK_CHANNELS: "{{ envs.SLACK_CHANNELS }}"
+      NOTION_TOKEN: "{{ envs.NOTION_TOKEN }}"
+      HUGGINGFACE_API_KEY: "{{ envs.HUGGINGFACE_API_KEY }}"
+      HUGGINGFACE_MODEL: "{{ envs.HUGGINGFACE_MODEL }}"
 
-  - id: summarize_updates
-    type: io.kestra.plugin.core.http.Request
-    uri: "https://router.huggingface.co/hf-inference/models/facebook/bart-large-cnn"
-    method: POST
-    headers:
-      Authorization: "Bearer hf_your_api_key_here"
-    contentType: application/json
-    body: |
-      {
-        "inputs": {{ ("Summarize the following project updates into a concise daily briefing with action items if any:\n\n" ~ outputs.aggregate_data.value) | json }},
-        "parameters": {
-          "max_length": 200,
-          "temperature": 0.7
-        }
-      }
+  # Task 2: Run Decision Engine
+  - id: run_decision_engine
+    type: io.kestra.plugin.scripts.python.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    beforeCommands:
+      - pip install --quiet python-dotenv
+    commands:
+      - cd /app/backend
+      - python agents/decision_engine.py --input /tmp/summarizer_output.json --output /tmp/decisions.json
+    inputFiles:
+      /tmp/summarizer_output.json: "{{ outputs.run_ai_summarizer.outputFiles['/tmp/summarizer_output.json'] }}"
+    outputFiles:
+      - /tmp/decisions.json
+    env:
+      DECISION_CONFIDENCE_THRESHOLD: "0.6"
 
-  - id: log-summary
+  # Task 3: Generate Final Report
+  - id: generate_report
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    script: |
+      import json
+      import sys
+      from datetime import datetime
+      
+      # Load results
+      with open('/tmp/summarizer_output.json', 'r') as f:
+          summarizer_data = json.load(f)
+      
+      with open('/tmp/decisions.json', 'r') as f:
+          decisions_data = json.load(f)
+      
+      # Generate report
+      report = []
+      report.append("=" * 80)
+      report.append("AI-POWERED DAILY BRIEFING")
+      report.append("=" * 80)
+      report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+      report.append(f"Period: Last {summarizer_data.get('metadata', {}).get('period_hours', 24)} hours")
+      report.append("")
+      
+      # Unified Summary
+      unified = summarizer_data.get('unified_summary', {})
+      if unified.get('unified_summary', {}).get('success'):
+          report.append("--- EXECUTIVE SUMMARY ---")
+          report.append(unified['unified_summary']['summary'])
+          report.append("")
+      
+      # Urgency Analysis
+      if decisions_data.get('success'):
+          urgency = decisions_data.get('urgency_analysis', {})
+          report.append("--- URGENCY ANALYSIS ---")
+          report.append(f"Urgency Level: {urgency.get('urgency_level', 'unknown').upper()}")
+          report.append(f"Urgency Score: {urgency.get('urgency_score', 0)}/1.0")
+          report.append(f"Urgent Items: {urgency.get('urgent_items_count', 0)}")
+          report.append(f"Recommendation: {urgency.get('recommendation', 'N/A')}")
+          report.append("")
+          
+          # High-Confidence Recommendations
+          high_conf_recs = decisions_data.get('high_confidence_recommendations', [])
+          if high_conf_recs:
+              report.append("--- RECOMMENDED ACTIONS (High Confidence) ---")
+              for i, rec in enumerate(high_conf_recs, 1):
+                  report.append(f"{i}. {rec['title']} (Priority: {rec['priority']}, Confidence: {rec['confidence']:.0%})")
+                  report.append(f"   {rec['description']}")
+                  if rec.get('action_items'):
+                      report.append("   Action Items:")
+                      for action in rec['action_items'][:3]:
+                          report.append(f"   - {action}")
+                  report.append("")
+          
+          # Patterns
+          patterns = decisions_data.get('patterns', {})
+          if patterns.get('active_contributors'):
+              report.append("--- TOP CONTRIBUTORS ---")
+              for contrib in patterns['active_contributors'][:5]:
+                  report.append(f"  - {contrib['name']}: {contrib['commits']} commits")
+              report.append("")
+      
+      # Agent Status
+      metadata = summarizer_data.get('metadata', {})
+      agents_active = metadata.get('agents_active', {})
+      report.append("--- AGENT STATUS ---")
+      report.append(f"GitHub: {'✓ Active' if agents_active.get('github') else '✗ Inactive'}")
+      report.append(f"Slack: {'✓ Active' if agents_active.get('slack') else '✗ Inactive'}")
+      report.append(f"Notion: {'✓ Active' if agents_active.get('notion') else '✗ Inactive'}")
+      report.append("")
+      report.append("=" * 80)
+      
+      # Print report
+      final_report = "\n".join(report)
+      print(final_report)
+      
+      # Also save to file
+      with open('/tmp/final_report.txt', 'w') as f:
+          f.write(final_report)
+    inputFiles:
+      /tmp/summarizer_output.json: "{{ outputs.run_ai_summarizer.outputFiles['/tmp/summarizer_output.json'] }}"
+      /tmp/decisions.json: "{{ outputs.run_decision_engine.outputFiles['/tmp/decisions.json'] }}"
+    outputFiles:
+      - /tmp/final_report.txt
+
+  # Task 4: Log Summary
+  - id: log_summary
     type: io.kestra.core.tasks.log.Log
     message: |
-      --- AI GENERATED SUMMARY ---
-      {{ outputs.summarize_updates.body }}
-      ----------------------------
+      {{ outputs.generate_report.vars.stdout }}
 
 triggers:
-  - id: daily-schedule
+  - id: daily_schedule
     type: io.kestra.core.models.triggers.types.Schedule
-    cron: "0 9 * * *" # Runs every day at 9 AM
+    cron: "0 9 * * *"  # Run every day at 9 AM
+    inputs:
+      hours: 24

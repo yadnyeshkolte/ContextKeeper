@@ -6,6 +6,7 @@ services:
       - "8080:8080"
     volumes:
       - ./flows:/app/flows
+      - ../backend:/app/backend
       - kestra-data:/app/storage
     environment:
       KESTRA_CONFIGURATION: |
@@ -16,7 +17,14 @@ services:
           server:
             basic-auth:
               enabled: false
-  
+      # Environment variables for AI Summarizer Flow
+      HUGGINGFACE_API_KEY: ""
+      GITHUB_TOKEN: ""
+      GITHUB_REPO: ""
+      SLACK_TOKEN: ""
+      SLACK_CHANNELS: ""
+      NOTION_TOKEN: ""
+
   postgres:
     image: postgres:14
     environment:

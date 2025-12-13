@@ -1,0 +1,24 @@
+name: CodeRabbit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  coderabbit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: CodeRabbit Review
+        uses: coderabbitai/ai-pr-reviewer@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+        with:
+          openai_base_url: https://router.huggingface.co/v1
+          openai_light_model: meta-llama/Llama-3.2-3B-Instruct
+          openai_heavy_model: meta-llama/Llama-3.1-70B-Instruct

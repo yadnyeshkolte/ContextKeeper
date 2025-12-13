@@ -1,0 +1,98 @@
+id: agent-orchestrator
+namespace: contextkeeper
+
+description: |
+  Meta-workflow that monitors and coordinates all AI agent executions,
+  learns from patterns, and adjusts scheduling based on activity levels.
+
+tasks:
+  # Task 1: Monitor Agent Activity
+  - id: check_agent_history
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    script: |
+      import json
+      from datetime import datetime, timedelta
+      
+      # Simulated check of recent agent executions
+      # In production, this would query Kestra's execution history
+      
+      recent_executions = {
+          'last_24h': 5,
+          'avg_urgency_score': 0.65,
+          'critical_count': 2,
+          'high_count': 3,
+          'pattern': 'increasing_activity'
+      }
+      
+      print(json.dumps(recent_executions))
+
+  # Task 2: Analyze Patterns
+  - id: analyze_patterns
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    script: |
+      import json
+      
+      history = json.loads('''{{ outputs.check_agent_history.vars.stdout }}''')
+      
+      # Determine if we should increase monitoring frequency
+      should_increase_frequency = (
+          history['avg_urgency_score'] > 0.7 or
+          history['critical_count'] > 1 or
+          history['pattern'] == 'increasing_activity'
+      )
+      
+      # Recommend schedule adjustment
+      if should_increase_frequency:
+          recommended_cron = "0 */2 * * *"  # Every 2 hours
+          reason = "High activity detected, increasing monitoring frequency"
+      else:
+          recommended_cron = "0 9 * * *"  # Daily at 9 AM
+          reason = "Normal activity levels, maintaining standard schedule"
+      
+      result = {
+          'should_adjust': should_increase_frequency,
+          'recommended_cron': recommended_cron,
+          'reason': reason
+      }
+      
+      print(json.dumps(result))
+
+  # Task 3: Coordinate Multi-Agent Decisions
+  - id: coordinate_agents
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    script: |
+      import json
+      
+      # Coordinate decisions across multiple agents
+      # This would integrate with the decision engine output
+      
+      coordination = {
+          'github_priority': 'high',
+          'slack_priority': 'medium',
+          'notion_priority': 'low',
+          'recommended_action': 'Focus on GitHub urgent items first'
+      }
+      
+      print(json.dumps(coordination))
+
+  # Task 4: Log Orchestration Decision
+  - id: log_orchestration
+    type: io.kestra.core.tasks.log.Log
+    message: |
+      🎯 Agent Orchestrator Decision:
+      {{ json(outputs.analyze_patterns.vars.stdout).reason }}
+      Recommended Schedule: {{ json(outputs.analyze_patterns.vars.stdout).recommended_cron }}
+
+triggers:
+  - id: daily_orchestration
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: "0 0 * * *"  # Run daily at midnight

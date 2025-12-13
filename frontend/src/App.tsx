@@ -6,6 +6,7 @@ import KnowledgeGraph from './components/KnowledgeGraph';
 import SyncStatus from './components/SyncStatus';
 import RepositorySelector from './components/RepositorySelector';
 import NotificationOverlay from './components/NotificationOverlay';
+import AIAgents from './components/AIAgents';
 
 interface Source {
   type: string;
@@ -32,7 +33,7 @@ function App() {
   const [query, setQuery] = useState<string>('');
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'query' | 'graph'>('query');
+  const [activeTab, setActiveTab] = useState<'query' | 'graph' | 'agents'>('query');
   const [repository, setRepository] = useState<string>('');
   const [branch, setBranch] = useState<string>('main');
   const [hasUpdates, setHasUpdates] = useState<boolean>(false);
@@ -154,6 +155,11 @@ function App() {
               Knowledge Graph
             </Nav.Link>
           </Nav.Item>
+          <Nav.Item>
+            <Nav.Link active={activeTab === 'agents'} onClick={() => setActiveTab('agents')}>
+              🤖 AI Agents
+            </Nav.Link>
+          </Nav.Item>
         </Nav>
 
         <div style={{ display: activeTab === 'query' ? 'block' : 'none' }}>
@@ -263,6 +269,10 @@ function App() {
 
         <div style={{ display: activeTab === 'graph' ? 'block' : 'none' }}>
           <KnowledgeGraph repository={repository} branch={branch} />
+        </div>
+
+        <div style={{ display: activeTab === 'agents' ? 'block' : 'none' }}>
+          <AIAgents repository={repository} branch={branch} />
         </div>
       </Container>
     </div>

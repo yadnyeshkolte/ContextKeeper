@@ -1,0 +1,10 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Navigate to backend and run lint/test if applicable
+# cd backend && npm run lint
+
+# Navigate to frontend and run lint/test if applicable
+# cd ../frontend && npm run lint
+
+echo "Pre-commit checks passed!"

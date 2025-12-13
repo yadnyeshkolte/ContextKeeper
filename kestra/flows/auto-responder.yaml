@@ -1,0 +1,140 @@
+id: auto-responder
+namespace: contextkeeper
+
+description: |
+  Autonomous responder that detects urgent GitHub issues, generates AI-powered responses,
+  and posts comments automatically for high-confidence responses or requests human review.
+
+inputs:
+  - id: confidence_threshold
+    type: FLOAT
+    defaults: 0.8
+    description: Confidence threshold for auto-posting (0.0-1.0)
+
+tasks:
+  # Task 1: Detect Urgent Issues
+  - id: detect_urgent_issues
+    type: io.kestra.plugin.scripts.python.Commands
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    beforeCommands:
+      - pip install --quiet PyGithub python-dotenv
+    commands:
+      - cd /app/backend
+      - python agents/github_agent.py --repo {{ envs.GITHUB_REPO }} --hours 1 --output /tmp/github_data.json
+    outputFiles:
+      - /tmp/github_data.json
+    env:
+      GITHUB_TOKEN: "{{ envs.GITHUB_TOKEN }}"
+      GITHUB_REPO: "{{ envs.GITHUB_REPO }}"
+
+  # Task 2: Generate AI Responses
+  - id: generate_responses
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.9
+    beforeCommands:
+      - pip install --quiet requests
+    script: |
+      import json
+      import os
+      import requests
+      
+      # Load GitHub data
+      with open('/tmp/github_data.json', 'r') as f:
+          github_data = json.load(f)
+      
+      urgent_items = github_data.get('urgent_items', [])
+      responses = []
+      
+      hf_api_key = os.getenv('HUGGINGFACE_API_KEY')
+      
+      for item in urgent_items[:3]:  # Process top 3 urgent items
+          # Generate AI response using Hugging Face
+          prompt = f"Generate a helpful response to this GitHub issue:\nTitle: {item['title']}\nType: {item['type']}\nReason: {item['reason']}"
+          
+          try:
+              response = requests.post(
+                  'https://api-inference.huggingface.co/models/facebook/bart-large-cnn',
+                  headers={'Authorization': f'Bearer {hf_api_key}'},
+                  json={'inputs': prompt, 'parameters': {'max_length': 200}}
+              )
+              
+              if response.status_code == 200:
+                  ai_response = response.json()[0]['summary_text']
+                  confidence = 0.85  # Simulated confidence score
+                  
+                  responses.append({
+                      'issue_number': item.get('number'),
+                      'issue_title': item['title'],
+                      'ai_response': ai_response,
+                      'confidence': confidence,
+                      'should_auto_post': confidence >= float(os.getenv('CONFIDENCE_THRESHOLD', '0.8'))
+                  })
+          except Exception as e:
+              print(f"Error generating response: {e}")
+      
+      print(json.dumps({'responses': responses, 'count': len(responses)}))
+    inputFiles:
+      /tmp/github_data.json: "{{ outputs.detect_urgent_issues.outputFiles['/tmp/github_data.json'] }}"
+    env:
+      HUGGINGFACE_API_KEY: "{{ envs.HUGGINGFACE_API_KEY }}"
+      CONFIDENCE_THRESHOLD: "{{ inputs.confidence_threshold }}"
+
+  # Task 3: Auto-Post High Confidence Responses
+  - id: auto_post_responses
+    type: io.kestra.plugin.core.flow.ForEach
+    values: "{{ json(outputs.generate_responses.vars.stdout).responses }}"
+    tasks:
+      - id: check_confidence
+        type: io.kestra.plugin.core.flow.If
+        condition: "{{ taskrun.value.should_auto_post }}"
+        then:
+          - id: post_comment
+            type: io.kestra.core.tasks.log.Log
+            message: |
+              ✅ AUTO-POSTING RESPONSE:
+              Issue #{{ taskrun.value.issue_number }}: {{ taskrun.value.issue_title }}
+              Confidence: {{ taskrun.value.confidence }}
+              Response: {{ taskrun.value.ai_response }}
+              
+              [In production, this would use GitHub API to post the comment]
+        else:
+          - id: request_review
+            type: io.kestra.core.tasks.log.Log
+            message: |
+              ⏸️ REQUESTING HUMAN REVIEW:
+              Issue #{{ taskrun.value.issue_number }}: {{ taskrun.value.issue_title }}
+              Confidence: {{ taskrun.value.confidence }} (below threshold)
+              Suggested Response: {{ taskrun.value.ai_response }}
+
+  # Task 4: Notify Summary
+  - id: notify_summary
+    type: io.kestra.plugin.core.flow.If
+    condition: "{{ json(outputs.generate_responses.vars.stdout).count > 0 }}"
+    then:
+      - id: send_slack_summary
+        type: io.kestra.plugin.notifications.slack.SlackIncomingWebhook
+        url: "{{ envs.SLACK_WEBHOOK_URL }}"
+        payload: |
+          {
+            "text": "🤖 *Auto-Responder Summary*",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*Auto-Responder Activity Report*\n\nProcessed {{ json(outputs.generate_responses.vars.stdout).count }} urgent issues"
+                }
+              }
+            ]
+          }
+
+triggers:
+  - id: hourly_check
+    type: io.kestra.core.models.triggers.types.Schedule
+    cron: "0 * * * *"  # Run every hour
+    inputs:
+      confidence_threshold: 0.8

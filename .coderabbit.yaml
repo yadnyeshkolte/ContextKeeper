@@ -1,14 +1,23 @@
 language: "en-US"
+early_access: false
 reviews:
   profile: "chill"
+  request_changes_workflow: false
   high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
   auto_review:
     enabled: true
     drafts: false
-  path_filters:
-    include:
-      - "src/**"
-    exclude:
-      - "tests/**"
-  chat:
-    auto_reply: true
+  tools:
+    shellcheck:
+      enabled: true
+    actionlint:
+      enabled: true
+    eslint:
+      enabled: true
+    prettier:
+      enabled: true
+chat:
+  auto_reply: true
