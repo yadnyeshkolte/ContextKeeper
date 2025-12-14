@@ -379,6 +379,24 @@ app.get('/api/status', async (req, res) => {
     });
 
     pythonProcess.on('close', (code) => {
+        if (code !== 0) {
+            console.error('Status check failed (non-zero code):', errorString);
+            return res.json({
+                chromadb: { count: 0, status: 'error', error: errorString, repository: repoName, branch: branchName },
+                mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+                timestamp: new Date().toISOString()
+            });
+        }
+
+        if (!dataString || !dataString.trim()) {
+            console.error('Status check returned empty output');
+            return res.json({
+                chromadb: { count: 0, status: 'error', error: "Empty output", repository: repoName, branch: branchName },
+                mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+                timestamp: new Date().toISOString()
+            });
+        }
+
         try {
             const chromaResult = JSON.parse(dataString);
             res.json({
@@ -454,7 +472,18 @@ app.get('/api/branches', async (req, res) => {
     });
 
     pythonProcess.on('close', (code) => {
-        // If local fetch fails or empty, we might want to just return empty array and let background sync handle it
+        if (code !== 0) {
+            // Log the error from stderr
+            console.error('Branch listing failed (non-zero exit code):', errorString);
+            // Return empty list so the frontend handles it gracefully
+            return res.json({ branches: [], from_cache: true, error: "Branch listing failed", details: errorString });
+        }
+
+        if (!dataString || !dataString.trim()) {
+            console.error('Branch listing returned empty output');
+            return res.json({ branches: [], from_cache: true, error: "Empty output from collector" });
+        }
+
         try {
             const result = JSON.parse(dataString);
 

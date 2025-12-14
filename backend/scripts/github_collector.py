@@ -49,14 +49,24 @@ class GitHubCollector:
         self.branch = branch or "main"
         
         if not self.github_token:
-            raise ValueError("GITHUB_TOKEN not found in environment variables")
+            print("Warning: GITHUB_TOKEN not found in environment variables. Functionality will be limited to local cache.", file=sys.stderr)
+        
         if not self.github_repo:
             raise ValueError("GITHUB_REPO not found in environment variables")
         
-        # Initialize GitHub client with retry
-        print(f"Initializing GitHub client for {self.github_repo} (branch: {self.branch})...", file=sys.stderr)
-        self.github = Github(self.github_token, per_page=100, retry=3)
-        self.repo = self.github.get_repo(self.github_repo)
+        # Initialize GitHub client with retry if token is available
+        self.github = None
+        self.repo = None
+        
+        if self.github_token:
+            print(f"Initializing GitHub client for {self.github_repo} (branch: {self.branch})...", file=sys.stderr)
+            try:
+                self.github = Github(self.github_token, per_page=100, retry=3)
+                self.repo = self.github.get_repo(self.github_repo)
+            except Exception as e:
+                 print(f"Warning: Failed to connect to GitHub: {e}", file=sys.stderr)
+        else:
+             print("Running in offline mode (no GITHUB_TOKEN)", file=sys.stderr)
         
         # Repository-specific ChromaDB path with branch
         self.repo_safe_name = self.github_repo.replace("/", "_")
