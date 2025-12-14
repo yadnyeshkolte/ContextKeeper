@@ -1,516 +1,798 @@
-# AI Agent System - Developer Guide
+# ContextKeeper Developer Guide
+
+Complete guide for developers working on ContextKeeper - an AI-powered knowledge management system for development teams.
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Installation](#installation)
-4. [Configuration](#configuration)
-5. [Using Individual Agents](#using-individual-agents)
-6. [Using the AI Summarizer](#using-the-ai-summarizer)
-7. [Using the Decision Engine](#using-the-decision-engine)
-8. [Kestra Integration](#kestra-integration)
-9. [Extending the System](#extending-the-system)
-10. [API Reference](#api-reference)
-11. [Troubleshooting](#troubleshooting)
+- [Architecture Overview](#architecture-overview)
+- [Technology Stack](#technology-stack)
+- [Development Setup](#development-setup)
+- [Code Organization](#code-organization)
+- [Data Flow](#data-flow)
+- [API Documentation](#api-documentation)
+- [Database Schemas](#database-schemas)
+- [Common Development Tasks](#common-development-tasks)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
 
----
+## Architecture Overview
 
-## Overview
+ContextKeeper is a multi-tier application with frontend, backend, AI processing, and workflow orchestration layers.
 
-The AI Agent System is a comprehensive solution for collecting, summarizing, and analyzing data from multiple sources (GitHub, Slack, Notion) using Hugging Face AI models. The system provides:
+### System Architecture
 
-- **Specialized Agents**: Dedicated agents for each platform
-- **AI Summarization**: Powered by Hugging Face models (default: `facebook/bart-large-cnn`)
-- **Decision Engine**: Intelligent recommendations based on aggregated data
-- **Kestra Orchestration**: Automated daily briefings
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        User Interface Layer                     │
+│                    (React + Vite + TypeScript)                  │
+│  ┌──────────┬──────────┬──────────┬──────────┬──────────────┐  │
+│  │  Query   │Knowledge │   AI     │  Branch  │     Sync     │  │
+│  │Interface │  Graph   │ Agents   │ Selector │    Status    │  │
+│  └──────────┴──────────┴──────────┴──────────┴──────────────┘  │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ HTTP/REST (Port 5173 → 3000)
+┌────────────────────────▼────────────────────────────────────────┐
+│                      API Gateway Layer                          │
+│                  (Express.js - Node.js)                         │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  REST API Endpoints (src/server.js)                      │  │
+│  │  • Query, Knowledge Graph, Sync, Status                  │  │
+│  │  • AI Agents, Branches, Config                           │  │
+│  │  • Job Management, Decision Engine                       │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ child_process.spawn()
+┌────────────────────────▼────────────────────────────────────────┐
+│                   AI Processing Layer                           │
+│                      (Python 3.9+)                              │
+│  ┌─────────────────────┬──────────────────────────────────┐    │
+│  │  Data Collectors    │      AI Agents                   │    │
+│  │  • github_collector │  • github_agent                  │    │
+│  │  • slack_collector  │  • slack_agent                   │    │
+│  │  • notion_collector │  • notion_agent                  │    │
+│  │  • rag_engine       │  • ai_summarizer                 │    │
+│  │  • knowledge_graph  │  • decision_engine               │    │
+│  └─────────────────────┴──────────────────────────────────┘    │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+        ┌────────────────┴────────────────┐
+        │                                 │
+┌───────▼──────────┐            ┌─────────▼────────┐
+│    MongoDB       │            │    ChromaDB      │
+│  (Metadata &     │            │  (Vector Store)  │
+│   Decisions)     │            │  Per Repo/Branch │
+└──────────────────┘            └──────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────────────┐
+│              Workflow Orchestration Layer                       │
+│                    (Kestra + Docker)                            │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  Automated Workflows (YAML-based)                        │  │
+│  │  • Data collection scheduling                            │  │
+│  │  • AI analysis pipelines                                 │  │
+│  │  • Multi-agent orchestration                             │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                         │
+        ┌────────────────┴────────────────┐
+        │                                 │
+┌───────▼──────────┐            ┌─────────▼────────┐
+│  External APIs   │            │   PostgreSQL     │
+│  • GitHub API    │            │  (Kestra State)  │
+│  • Slack API     │            └──────────────────┘
+│  • Notion API    │
+│  • Hugging Face  │
+└──────────────────┘
+```
 
-## Architecture
+### Component Interaction Flow
 
 ```mermaid
-graph TD
-    A[GitHub Agent] -->|Collects & Summarizes| D[AI Summarizer]
-    B[Slack Agent] -->|Collects & Summarizes| D
-    C[Notion Agent] -->|Collects & Summarizes| D
-    D -->|Aggregated Summary| E[Decision Engine]
-    E -->|Recommendations| F[Final Report]
-    G[Hugging Face API] -->|AI Models| A
-    G -->|AI Models| B
-    G -->|AI Models| C
-    G -->|AI Models| D
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Python
+    participant ChromaDB
+    participant MongoDB
+    participant HuggingFace
+
+    User->>Frontend: Ask question
+    Frontend->>Backend: POST /api/query
+    Backend->>Python: spawn rag_engine.py
+    Python->>ChromaDB: Semantic search
+    ChromaDB-->>Python: Relevant documents
+    Python->>HuggingFace: Generate answer
+    HuggingFace-->>Python: AI response
+    Python-->>Backend: JSON result
+    Backend-->>Frontend: Answer + sources
+    Frontend-->>User: Display result
 ```
 
-### Component Hierarchy
+## Technology Stack
 
+### Frontend
+- **React 19**: UI library with hooks and functional components
+- **TypeScript**: Type-safe JavaScript
+- **Vite**: Fast build tool (ESBuild-based)
+- **Bootstrap 5**: CSS framework
+- **React Force Graph**: 2D/3D graph visualization
+- **Three.js**: 3D rendering engine
+- **React Markdown**: Markdown rendering
+
+### Backend
+- **Node.js 16+**: JavaScript runtime
+- **Express.js**: Web framework
+- **Mongoose**: MongoDB ODM
+- **Axios**: HTTP client
+- **CORS**: Cross-origin resource sharing
+- **dotenv**: Environment variable management
+
+### AI/ML Layer
+- **Python 3.9+**: AI processing language
+- **ChromaDB**: Vector database for embeddings
+- **Hugging Face Hub**: AI model API
+- **Sentence Transformers**: Text embeddings
+- **PyGithub**: GitHub API wrapper
+- **Slack SDK**: Slack API client
+- **Notion Client**: Notion API wrapper
+
+### Databases
+- **MongoDB**: Document database for metadata
+- **ChromaDB**: Vector database (per repository/branch)
+- **PostgreSQL**: Kestra workflow state (optional)
+
+### Orchestration
+- **Kestra**: Workflow orchestration
+- **Docker**: Containerization
+- **Docker Compose**: Multi-container orchestration
+
+## Development Setup
+
+### Complete Setup from Scratch
+
+#### 1. Prerequisites Installation
+
+**Node.js:**
+```bash
+# Download from https://nodejs.org/ (v16+)
+node --version  # Verify installation
+npm --version
 ```
-backend/agents/
-├── base_agent.py          # Abstract base class
-├── github_agent.py        # GitHub specialization
-├── slack_agent.py         # Slack specialization
-├── notion_agent.py        # Notion specialization
-├── ai_summarizer.py       # Unified summarizer
-└── decision_engine.py     # Decision making
+
+**Python:**
+```bash
+# Download from https://python.org/ (v3.9+)
+python --version  # or python3 --version
+pip --version
 ```
 
----
+**MongoDB:**
+```bash
+# Option A: Local installation
+# Download from https://www.mongodb.com/try/download/community
 
-## Installation
+# Option B: MongoDB Atlas (cloud)
+# Sign up at https://www.mongodb.com/cloud/atlas
+```
 
-### Prerequisites
+**Docker (for Kestra):**
+```bash
+# Download from https://www.docker.com/products/docker-desktop
+docker --version
+docker-compose --version
+```
 
-- Python 3.9+
-- Docker & Docker Compose (for Kestra)
-- API tokens for GitHub, Slack, Notion, and Hugging Face
+#### 2. Clone Repository
 
-### Install Dependencies
+```bash
+git clone https://github.com/yadnyeshkolte/ContextKeeper.git
+cd ContextKeeper
+```
+
+#### 3. Backend Setup
 
 ```bash
 cd backend
+
+# Install Node.js dependencies
+npm install
+
+# Create Python virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
+
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your API keys
+
+# Start backend
+npm start
 ```
 
-### Required Packages
-
-The system requires these additional packages (already in `requirements.txt`):
-
-```
-transformers
-huggingface_hub
-requests
-```
-
----
-
-## Configuration
-
-### Environment Variables
-
-Create or update `backend/.env`:
+#### 4. Frontend Setup
 
 ```bash
-# GitHub Configuration
-GITHUB_TOKEN=ghp_your_token_here
-GITHUB_REPO=owner/repository
+cd frontend
 
-# Slack Configuration
-SLACK_TOKEN=xoxb-your-token-here
-SLACK_CHANNELS=general,development,team
+# Install dependencies
+npm install
 
-# Notion Configuration
-NOTION_TOKEN=secret_your_token_here
+# Configure environment
+cp .env.example .env
+# Edit .env with backend URL
 
-# Hugging Face Configuration
-HUGGINGFACE_API_KEY=hf_your_key_here
-HUGGINGFACE_MODEL=facebook/bart-large-cnn  # Optional, this is default
-
-# Agent Configuration (Optional)
-AGENT_MAX_RETRIES=3
-AGENT_RETRY_DELAY=2
-DECISION_CONFIDENCE_THRESHOLD=0.6
+# Start development server
+npm run dev
 ```
 
-### Kestra Configuration
-
-Update `kestra/docker-compose.yml` environment section:
-
-```yaml
-environment:
-  GITHUB_TOKEN: "your_github_token"
-  GITHUB_REPO: "owner/repo"
-  SLACK_TOKEN: "your_slack_token"
-  SLACK_CHANNELS: "channel1,channel2"
-  NOTION_TOKEN: "your_notion_token"
-  HUGGINGFACE_API_KEY: "your_hf_key"
-  HUGGINGFACE_MODEL: "facebook/bart-large-cnn"
-```
-
----
-
-## Using Individual Agents
-
-### GitHub Agent
-
-```bash
-# Basic usage
-python backend/agents/github_agent.py --repo owner/repo --hours 24
-
-# With branch specification
-python backend/agents/github_agent.py --repo owner/repo --branch develop --hours 48
-
-# Test mode
-python backend/agents/github_agent.py --test
-```
-
-**Output**: JSON with commits, PRs, issues, AI summary, and urgent items
-
-### Slack Agent
-
-```bash
-# Basic usage
-python backend/agents/slack_agent.py --hours 24
-
-# With custom repo for storage
-python backend/agents/slack_agent.py --repo owner/repo --hours 12
-
-# Test mode
-python backend/agents/slack_agent.py --test
-```
-
-**Output**: JSON with messages, AI summary, action items, and key discussions
-
-### Notion Agent
-
-```bash
-# Basic usage
-python backend/agents/notion_agent.py --hours 24
-
-# Test mode
-python backend/agents/notion_agent.py --test
-```
-
-**Output**: JSON with page updates, AI summary, and priority changes
-
----
-
-## Using the AI Summarizer
-
-The AI Summarizer aggregates data from all agents and generates a unified summary.
-
-### Command Line Usage
-
-```bash
-# Basic usage
-python backend/agents/ai_summarizer.py --hours 24
-
-# With specific repo and branch
-python backend/agents/ai_summarizer.py --repo owner/repo --branch main --hours 48
-
-# Save to file
-python backend/agents/ai_summarizer.py --hours 24 --output summary.json
-
-# Test mode
-python backend/agents/ai_summarizer.py --test-mode
-```
-
-### Python API Usage
-
-```python
-from agents.ai_summarizer import AISummarizer
-
-# Initialize
-summarizer = AISummarizer(repo_name="owner/repo", branch="main")
-
-# Run pipeline
-result = summarizer.run(hours=24)
-
-# Access results
-if result['success']:
-    unified_summary = result['unified_summary']
-    print(unified_summary['unified_summary']['summary'])
-    
-    # Access individual agent data
-    github_data = result['agent_data']['github']
-    slack_data = result['agent_data']['slack']
-    notion_data = result['agent_data']['notion']
-```
-
----
-
-## Using the Decision Engine
-
-The Decision Engine analyzes summarized data and provides recommendations.
-
-### Command Line Usage
-
-```bash
-# Run decision engine on summarizer output
-python backend/agents/decision_engine.py --input summary.json --output decisions.json
-
-# With custom confidence threshold
-python backend/agents/decision_engine.py --input summary.json --threshold 0.7
-```
-
-### Python API Usage
-
-```python
-from agents.decision_engine import DecisionEngine
-from agents.ai_summarizer import AISummarizer
-
-# Get summarizer results
-summarizer = AISummarizer()
-summarizer_result = summarizer.run(hours=24)
-
-# Run decision engine
-engine = DecisionEngine()
-decisions = engine.make_decisions(summarizer_result)
-
-# Access recommendations
-if decisions['success']:
-    for rec in decisions['high_confidence_recommendations']:
-        print(f"{rec['title']} (Confidence: {rec['confidence']:.0%})")
-        print(f"  {rec['description']}")
-        for action in rec['action_items']:
-            print(f"  - {action}")
-```
-
----
-
-## Kestra Integration
-
-### Starting Kestra
+#### 5. Kestra Setup (Optional)
 
 ```bash
 cd kestra
+
+# Configure environment
+cp .env.example .env
+# Edit .env with API keys
+
+# Start Kestra
 docker-compose up -d
+
+# Access UI at http://localhost:8080
 ```
 
-Access Kestra UI at `http://localhost:8080`
+### IDE Configuration
 
-### Running the Flow
+#### VS Code (Recommended)
 
-#### Via UI
+**Extensions:**
+- ESLint
+- Prettier
+- Python
+- Pylance
+- Docker
+- MongoDB for VS Code
 
-1. Navigate to **Flows** → **contextkeeper** → **ai-summarizer**
-2. Click **Execute**
-3. Set `hours` input (default: 24)
-4. Click **Execute**
-
-#### Via CLI
-
-```bash
-# Execute flow
-docker-compose exec kestra kestra flow trigger contextkeeper ai-summarizer
-
-# With custom hours
-docker-compose exec kestra kestra flow trigger contextkeeper ai-summarizer --hours 48
+**settings.json:**
+```json
+{
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+  "python.linting.enabled": true,
+  "python.linting.pylintEnabled": true,
+  "python.formatting.provider": "black"
+}
 ```
 
-### Flow Schedule
+#### Debugging Configuration
 
-The flow runs automatically every day at 9 AM (configured in `triggers` section).
+**Backend (Node.js):**
+```json
+{
+  "type": "node",
+  "request": "launch",
+  "name": "Backend Server",
+  "program": "${workspaceFolder}/backend/src/server.js",
+  "envFile": "${workspaceFolder}/backend/.env"
+}
+```
 
-To change the schedule, edit `kestra/flows/ai-summarizer.yaml`:
+**Python Scripts:**
+```json
+{
+  "type": "python",
+  "request": "launch",
+  "name": "RAG Engine",
+  "program": "${workspaceFolder}/backend/scripts/rag_engine.py",
+  "args": ["test question", "owner/repo", "main"],
+  "console": "integratedTerminal"
+}
+```
 
+## Code Organization
+
+### Directory Structure
+
+```
+ContextKeeper/
+├── backend/                    # Backend API and AI processing
+│   ├── src/
+│   │   └── server.js          # Express API server (990 lines)
+│   ├── scripts/               # Python data collection scripts
+│   │   ├── github_collector.py
+│   │   ├── slack_collector.py
+│   │   ├── notion_collector.py
+│   │   ├── rag_engine.py
+│   │   └── knowledge_graph_builder.py
+│   ├── agents/                # Python AI agents
+│   │   ├── base_agent.py
+│   │   ├── github_agent.py
+│   │   ├── slack_agent.py
+│   │   ├── notion_agent.py
+│   │   ├── ai_summarizer.py
+│   │   └── decision_engine.py
+│   ├── chroma/                # ChromaDB storage (auto-created)
+│   ├── package.json
+│   ├── requirements.txt
+│   └── .env
+├── frontend/                  # React frontend
+│   ├── src/
+│   │   ├── components/       # React components
+│   │   │   ├── AIAgents.tsx
+│   │   │   ├── AgentRunner.tsx
+│   │   │   ├── KnowledgeGraph.tsx
+│   │   │   ├── KnowledgeGraph3D.tsx
+│   │   │   └── ...
+│   │   ├── App.tsx           # Main app component
+│   │   └── main.tsx          # Entry point
+│   ├── public/
+│   ├── package.json
+│   └── .env
+├── kestra/                    # Workflow orchestration
+│   ├── flows/                # Workflow YAML files
+│   ├── docker-compose.yml
+│   └── .env
+├── docs/                      # Documentation
+│   ├── DEVELOPER_GUIDE.md    # This file
+│   ├── api.md
+│   ├── architecture.md
+│   └── ...
+└── README.md                  # Main documentation
+```
+
+### Naming Conventions
+
+**Files:**
+- React components: PascalCase (e.g., `KnowledgeGraph.tsx`)
+- Python scripts: snake_case (e.g., `rag_engine.py`)
+- Configuration files: lowercase (e.g., `package.json`)
+
+**Variables:**
+- JavaScript/TypeScript: camelCase (e.g., `apiUrl`)
+- Python: snake_case (e.g., `api_key`)
+- Constants: UPPER_SNAKE_CASE (e.g., `API_VERSION`)
+
+**Functions:**
+- JavaScript/TypeScript: camelCase (e.g., `fetchData()`)
+- Python: snake_case (e.g., `collect_data()`)
+- React components: PascalCase (e.g., `QueryInterface()`)
+
+## Data Flow
+
+### Query Processing Flow
+
+```
+1. User enters question in frontend
+   ↓
+2. Frontend sends POST /api/query
+   ↓
+3. Backend spawns rag_engine.py
+   ↓
+4. Python script:
+   a. Loads ChromaDB collection for repo/branch
+   b. Generates embedding for question
+   c. Performs semantic search
+   d. Retrieves top-k relevant documents
+   e. Constructs context from documents
+   f. Calls Hugging Face API with context + question
+   g. Parses AI response
+   h. Extracts sources, people, timeline
+   ↓
+5. Python returns JSON to backend
+   ↓
+6. Backend returns JSON to frontend
+   ↓
+7. Frontend displays answer with sources
+```
+
+### Data Collection Flow
+
+```
+1. User clicks "Sync Data" in frontend
+   ↓
+2. Frontend sends POST /api/sync-data
+   ↓
+3. Backend spawns github_collector.py
+   ↓
+4. Python script:
+   a. Fetches commits from GitHub API
+   b. Extracts metadata (message, author, files, etc.)
+   c. Generates embeddings using Sentence Transformers
+   d. Stores in ChromaDB collection (repo_branch format)
+   e. Updates MongoDB with metadata
+   ↓
+5. Python returns success JSON
+   ↓
+6. Backend clears knowledge graph cache
+   ↓
+7. Backend returns success to frontend
+   ↓
+8. Frontend shows success message
+```
+
+### Knowledge Graph Generation Flow
+
+```
+1. User opens Knowledge Graph tab
+   ↓
+2. Frontend sends GET /api/knowledge-graph
+   ↓
+3. Backend checks cache (5-minute TTL)
+   ↓
+4. If cache miss, spawn knowledge_graph_builder.py
+   ↓
+5. Python script:
+   a. Loads data from ChromaDB
+   b. Extracts entities:
+      - Commits (from commit messages)
+      - Authors (from commit metadata)
+      - Files (from changed files)
+      - Technologies (from file extensions, imports)
+      - Decisions (from commit messages with keywords)
+   c. Creates relationships:
+      - Author → Commit (authored)
+      - Commit → File (modified)
+      - File → Technology (uses)
+      - Commit → Decision (decided)
+   d. Assigns confidence scores
+   e. Builds graph structure (nodes + links)
+   ↓
+6. Python returns graph JSON
+   ↓
+7. Backend caches result
+   ↓
+8. Backend returns graph to frontend
+   ↓
+9. Frontend renders with React Force Graph
+```
+
+## API Documentation
+
+See [backend/README.md](../backend/README.md) for complete API reference.
+
+### Key Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/query` | POST | RAG query processing |
+| `/api/knowledge-graph` | GET | Knowledge graph data |
+| `/api/sync-data` | POST | Sync branch data |
+| `/api/sync-repo` | POST | Sync all branches |
+| `/api/agents/github` | POST | Run GitHub agent |
+| `/api/agents/summarize` | POST | Run AI summarizer |
+| `/api/status` | GET | System status |
+| `/api/branches` | GET | List branches |
+
+## Database Schemas
+
+### MongoDB Collections
+
+#### `decisions` Collection
+```javascript
+{
+  _id: ObjectId,
+  topic: String,           // Decision topic
+  decision: String,        // Decision made
+  reasoning: String,       // Reasoning behind decision
+  sources: [String],       // Source references
+  participants: [String],  // People involved
+  date: Date              // Decision date
+}
+```
+
+### ChromaDB Collections
+
+**Collection naming:** `chroma_db_{repository_name}_{branch_name}`
+
+Example: `chroma_db_yadnyeshkolte_ContextKeeper_main`
+
+**Document structure:**
+```python
+{
+  "id": "commit_abc123",
+  "embedding": [0.1, 0.2, ...],  # 384-dim vector
+  "metadata": {
+    "type": "commit",
+    "sha": "abc123",
+    "message": "Add authentication",
+    "author": "john@example.com",
+    "date": "2025-12-14T10:00:00Z",
+    "files": ["auth.py", "login.tsx"],
+    "repository": "owner/repo",
+    "branch": "main"
+  },
+  "document": "commit message + file changes text"
+}
+```
+
+## Common Development Tasks
+
+### Adding a New API Endpoint
+
+1. **Add route in `backend/src/server.js`:**
+```javascript
+app.post('/api/my-endpoint', async (req, res) => {
+  const { param1, param2 } = req.body;
+  
+  // Validation
+  if (!param1) {
+    return res.status(400).json({ error: 'param1 required' });
+  }
+  
+  // Process request
+  const result = await processData(param1, param2);
+  
+  res.json({ success: true, data: result });
+});
+```
+
+2. **Add frontend API call:**
+```typescript
+const myEndpoint = async (param1: string, param2: string) => {
+  const response = await fetch(`${apiUrl}/api/my-endpoint`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ param1, param2 })
+  });
+  return response.json();
+};
+```
+
+3. **Update documentation:**
+- Add to `backend/README.md` API section
+- Add to this developer guide
+
+### Adding a New Python Script
+
+1. **Create script in `backend/scripts/`:**
+```python
+# my_script.py
+import sys
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def main(arg1, arg2):
+    # Your logic here
+    result = {"success": True, "data": "..."}
+    print(json.dumps(result))
+
+if __name__ == "__main__":
+    arg1 = sys.argv[1] if len(sys.argv) > 1 else None
+    arg2 = sys.argv[2] if len(sys.argv) > 2 else None
+    main(arg1, arg2)
+```
+
+2. **Call from Express:**
+```javascript
+const pythonProcess = spawn(pythonCmd, [
+  path.join(__dirname, '../scripts/my_script.py'),
+  arg1,
+  arg2
+]);
+
+let dataString = '';
+pythonProcess.stdout.on('data', (data) => {
+  dataString += data.toString();
+});
+
+pythonProcess.on('close', (code) => {
+  if (code === 0) {
+    const result = JSON.parse(dataString);
+    res.json(result);
+  } else {
+    res.status(500).json({ error: 'Script failed' });
+  }
+});
+```
+
+### Adding a New React Component
+
+1. **Create component file:**
+```typescript
+// src/components/MyComponent.tsx
+import React, { useState } from 'react';
+
+interface MyComponentProps {
+  title: string;
+  onAction: () => void;
+}
+
+const MyComponent: React.FC<MyComponentProps> = ({ title, onAction }) => {
+  const [state, setState] = useState('');
+  
+  return (
+    <div className="my-component">
+      <h2>{title}</h2>
+      <button onClick={onAction}>Action</button>
+    </div>
+  );
+};
+
+export default MyComponent;
+```
+
+2. **Import in App.tsx:**
+```typescript
+import MyComponent from './components/MyComponent';
+
+// In render:
+<MyComponent title="Test" onAction={() => console.log('clicked')} />
+```
+
+### Creating a New Kestra Workflow
+
+1. **Create YAML file in `kestra/flows/`:**
 ```yaml
-triggers:
-  - id: daily_schedule
-    type: io.kestra.core.models.triggers.types.Schedule
-    cron: "0 9 * * *"  # Change this cron expression
+id: my-workflow
+namespace: contextkeeper
+
+inputs:
+  - name: param1
+    type: STRING
+    required: true
+
+tasks:
+  - id: my_task
+    type: io.kestra.plugin.scripts.python.Script
+    script: |
+      print("Hello from Kestra")
 ```
 
----
+2. **Import in Kestra UI:**
+- Navigate to Flows → Create → Import YAML
+- Select your file
+- Save
 
-## Extending the System
+## Testing
 
-### Creating a Custom Agent
+### Backend Testing
 
-1. **Create a new agent file** (e.g., `backend/agents/jira_agent.py`):
+**Manual API testing:**
+```bash
+# Test query endpoint
+curl -X POST http://localhost:3000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "test", "repository": "owner/repo", "branch": "main"}'
 
-```python
-from agents.base_agent import BaseAgent
-
-class JiraAgent(BaseAgent):
-    def __init__(self):
-        super().__init__("jira")
-        # Initialize Jira client
-    
-    def collect_data(self, hours=24, **kwargs):
-        # Collect Jira issues
-        return {"issues": [...]}
-    
-    def format_data_for_summary(self, data):
-        # Format for AI summarization
-        return "Jira Issues:\n..."
+# Test status endpoint
+curl http://localhost:3000/api/status?repository=owner/repo&branch=main
 ```
 
-2. **Update `ai_summarizer.py`** to include your agent:
-
-```python
-from agents.jira_agent import JiraAgent
-
-class AISummarizer:
-    def __init__(self, ...):
-        # ... existing code ...
-        self.jira_agent = JiraAgent()
-```
-
-3. **Update Kestra flow** to include necessary environment variables
-
-### Customizing Hugging Face Models
-
-To use a different model, update the environment variable:
+### Python Script Testing
 
 ```bash
-HUGGINGFACE_MODEL=google/flan-t5-large
+cd backend
+source venv/bin/activate  # or venv\Scripts\activate on Windows
+
+# Test RAG engine
+python scripts/rag_engine.py "Why did we choose MongoDB?" owner/repo main
+
+# Test GitHub collector
+python scripts/github_collector.py owner/repo main
+
+# Test knowledge graph builder
+python scripts/knowledge_graph_builder.py owner/repo main
 ```
 
-**Recommended Models**:
-- `facebook/bart-large-cnn` - Best for summarization (default)
-- `google/flan-t5-large` - Better for instruction-following
-- `philschmid/bart-large-cnn-samsum` - Optimized for conversations
-- `facebook/mbart-large-50` - Multilingual support
+### Frontend Testing
 
----
-
-## API Reference
-
-### BaseAgent
-
-```python
-class BaseAgent(agent_name: str)
+```bash
+cd frontend
+npm run dev
+# Open http://localhost:5173
+# Manually test UI components
 ```
-
-**Methods**:
-- `collect_data(**kwargs) -> Dict[str, Any]` - Abstract method to collect data
-- `format_data_for_summary(data) -> str` - Abstract method to format data
-- `summarize_text(text, max_length=500, temperature=0.7) -> Dict` - Summarize text using HF
-- `process(**kwargs) -> Dict` - Main pipeline: collect → format → summarize
-
-### GitHubAgent
-
-```python
-class GitHubAgent(repo_name: str, branch: str = "main")
-```
-
-**Methods**:
-- `collect_data(hours=24) -> Dict` - Collect GitHub activity
-- `identify_urgent_items(data) -> List[Dict]` - Find urgent issues/PRs
-
-### SlackAgent
-
-```python
-class SlackAgent(repo_name: str = None)
-```
-
-**Methods**:
-- `collect_data(hours=24) -> Dict` - Collect Slack messages
-- `extract_action_items(data) -> List[Dict]` - Extract action items
-- `identify_key_discussions(data) -> List[Dict]` - Find important discussions
-
-### NotionAgent
-
-```python
-class NotionAgent()
-```
-
-**Methods**:
-- `collect_data(hours=24) -> Dict` - Collect Notion page updates
-- `identify_priority_changes(data) -> List[Dict]` - Find priority changes
-- `categorize_pages(data) -> Dict[str, List]` - Categorize pages by type
-
-### AISummarizer
-
-```python
-class AISummarizer(repo_name: str, branch: str = "main")
-```
-
-**Methods**:
-- `collect_all_data(hours=24) -> Dict` - Collect from all agents
-- `generate_unified_summary(all_data) -> Dict` - Generate final summary
-- `run(hours=24) -> Dict` - Complete pipeline
-
-### DecisionEngine
-
-```python
-class DecisionEngine()
-```
-
-**Methods**:
-- `analyze_urgency(agent_data) -> Dict` - Analyze urgency levels
-- `identify_patterns(agent_data) -> Dict` - Find patterns and trends
-- `generate_recommendations(agent_data, urgency, patterns) -> List[Dict]` - Generate recommendations
-- `make_decisions(summarizer_result) -> Dict` - Complete decision pipeline
-
----
 
 ## Troubleshooting
 
 ### Common Issues
 
-#### 1. "HUGGINGFACE_API_KEY not found"
-
-**Solution**: Add your Hugging Face API key to `.env`:
+**Issue: Python module not found**
 ```bash
-HUGGINGFACE_API_KEY=hf_your_key_here
+# Solution: Ensure virtual environment is activated
+cd backend
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # macOS/Linux
+pip install -r requirements.txt
 ```
 
-Get a free key at: https://huggingface.co/settings/tokens
-
-#### 2. "Model loading" timeout
-
-**Cause**: Hugging Face models need to load on first request (can take 20-30 seconds)
-
-**Solution**: Wait for the model to load. Subsequent requests will be faster.
-
-#### 3. Slack "channel not found"
-
-**Cause**: Bot not invited to channel or incorrect channel name
-
-**Solution**:
-1. Invite bot to channel: `/invite @your_bot_name`
-2. Verify channel name in `SLACK_CHANNELS` (without #)
-3. Ensure bot has `channels:read` and `groups:read` scopes
-
-#### 4. Kestra "Unable to find backend scripts"
-
-**Cause**: Backend volume not mounted
-
-**Solution**: Verify `docker-compose.yml` has:
-```yaml
-volumes:
-  - ../backend:/app/backend
-```
-
-Then restart: `docker-compose down && docker-compose up -d`
-
-#### 5. "Rate limit exceeded" from Hugging Face
-
-**Cause**: Free tier rate limits
-
-**Solutions**:
-- Upgrade to Hugging Face Pro ($9/month)
-- Use local model inference (requires more resources)
-- Reduce frequency of requests
-
-### Debug Mode
-
-Enable verbose logging:
-
+**Issue: MongoDB connection failed**
 ```bash
-export DEBUG=1
-python backend/agents/ai_summarizer.py --hours 24
+# Solution: Check MongoDB is running
+mongosh  # Should connect
+# Or check MONGODB_URI in .env
 ```
 
-### Viewing Kestra Logs
-
+**Issue: ChromaDB collection not found**
 ```bash
-# View all logs
-docker-compose logs -f kestra
-
-# View specific execution
-# (Check Kestra UI for execution ID)
-docker-compose logs kestra | grep <execution_id>
+# Solution: Sync data first
+curl -X POST http://localhost:3000/api/sync-data \
+  -H "Content-Type: application/json" \
+  -d '{"repository": "owner/repo", "branch": "main"}'
 ```
 
----
+**Issue: Frontend can't connect to backend**
+```bash
+# Solution: Check VITE_API_URL in frontend/.env
+# Ensure backend is running on http://localhost:3000
+```
 
-## Best Practices
+**Issue: Hugging Face API errors**
+```bash
+# Solution: Check HUGGINGFACE_API_KEY in backend/.env
+# Verify token at https://huggingface.co/settings/tokens
+```
 
-1. **API Token Security**: Never commit tokens to git. Use `.env` files and `.gitignore`
-2. **Rate Limiting**: Respect API rate limits. Use reasonable `hours` values (24-48)
-3. **Error Handling**: All agents have built-in retry logic. Check logs for persistent errors
-4. **Model Selection**: Choose models based on your needs:
-   - Summarization: `facebook/bart-large-cnn`
-   - Instruction-following: `google/flan-t5-large`
-   - Conversations: `philschmid/bart-large-cnn-samsum`
-5. **Confidence Threshold**: Adjust `DECISION_CONFIDENCE_THRESHOLD` based on your risk tolerance (0.5-0.8 recommended)
+### Debugging Tips
 
----
+**Backend debugging:**
+```bash
+# Add console.log statements
+console.log('Debug:', variable);
 
-## Support
+# Use Node.js debugger
+node --inspect src/server.js
+# Open chrome://inspect in Chrome
+```
 
-For issues or questions:
-1. Check this guide and troubleshooting section
-2. Review Kestra logs for execution errors
-3. Test individual agents before running full pipeline
-4. Verify all API tokens are valid and have required permissions
+**Python debugging:**
+```python
+# Add print statements
+print(f"Debug: {variable}")
+
+# Use pdb debugger
+import pdb; pdb.set_trace()
+```
+
+**Frontend debugging:**
+```typescript
+// Use console.log
+console.log('Debug:', variable);
+
+// Use React DevTools browser extension
+// Use browser debugger (F12)
+```
+
+## Performance Optimization
+
+### Backend
+- Use caching for knowledge graph (5-minute TTL)
+- Limit ChromaDB query results (top-k)
+- Use connection pooling for MongoDB
+
+### Frontend
+- Use React.memo for expensive components
+- Debounce API calls
+- Lazy load components
+- Optimize graph rendering (limit nodes)
+
+### Python
+- Use batch processing for large datasets
+- Cache embeddings
+- Optimize ChromaDB queries
+
+## Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Make changes
+4. Test thoroughly
+5. Commit (`git commit -m 'Add amazing feature'`)
+6. Push (`git push origin feature/amazing-feature`)
+7. Open Pull Request
+
+## License
+
+Apache 2.0 - See [LICENSE](../LICENSE) for details.

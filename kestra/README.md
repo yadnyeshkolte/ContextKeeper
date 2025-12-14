@@ -99,6 +99,147 @@ inputs:
   user_query: "What are the critical blockers and how should we prioritize this week?"
 ```
 
+## 📁 Workflow Files
+
+The `flows/` directory contains multiple workflow YAML files for different use cases:
+
+### Main Workflows
+
+#### `unified-contextkeeper-flow.yml` & `unified-contextkeeper-flow-v2.yml`
+Complete end-to-end workflow that:
+- Collects data from GitHub, Slack, and Notion in parallel
+- Prepares unified context for AI analysis
+- Runs AI agent for decision-making
+- Generates structured reports with priority classification
+
+**Use this for**: Comprehensive daily/weekly team activity analysis
+
+#### `agentic-ai-summarizer.yaml`
+Advanced AI-powered summarization with autonomous decision-making:
+- Native Kestra HTTP plugin for Hugging Face API
+- AI-driven urgency classification
+- Conditional autonomous actions based on confidence
+- Integrated data collection and analysis
+
+**Use this for**: Automated intelligent summarization with decision logic
+
+#### `ai-summarizer.yaml`
+Basic AI summarization workflow:
+- Collects data from configured sources
+- Generates AI summaries using Hugging Face
+- Simpler than agentic version
+
+**Use this for**: Simple summarization without decision logic
+
+### Agent Workflows
+
+#### `agent-orchestrator.yaml`
+Coordinates multiple AI agents:
+- Orchestrates GitHub, Slack, and Notion agents
+- Aggregates results from multiple sources
+- Provides unified analysis
+
+**Use this for**: Running multiple agents in coordination
+
+### Data Collection Workflows
+
+#### `github-collector.yaml`
+Standalone GitHub data collection:
+- Fetches commits, PRs, issues
+- Stores in ChromaDB
+- Can be scheduled independently
+
+**Use this for**: Regular GitHub data sync
+
+#### `slack-collector.yaml`
+Standalone Slack data collection:
+- Collects channel messages and threads
+- Stores in ChromaDB
+
+**Use this for**: Regular Slack data sync
+
+#### `knowledge-graph.yaml`
+Knowledge graph generation workflow:
+- Builds graph from collected data
+- Generates nodes and relationships
+
+**Use this for**: Updating knowledge graph visualization
+
+### Utility Workflows
+
+#### `auto-responder.yaml`
+Automated response workflow:
+- Monitors for specific triggers
+- Generates automated responses
+- Can be used for notifications
+
+**Use this for**: Automated team notifications
+
+## 🚀 Deployment
+
+### Using Docker Compose (Recommended)
+
+1. **Navigate to kestra directory:**
+```bash
+cd kestra
+```
+
+2. **Configure environment variables:**
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+```
+
+3. **Start Kestra:**
+```bash
+docker-compose up -d
+```
+
+4. **Access Kestra UI:**
+Open `http://localhost:8080` in your browser
+
+5. **Import workflows:**
+- Click **Flows** → **Create** → **Import YAML**
+- Select workflow files from `flows/` directory
+- Import one or more workflows
+
+### Using Docker Run (Windows)
+
+For Windows users without Docker Compose:
+
+```bash
+docker run --pull=always --rm -it -p 8080:8080 --user=root ^
+    -e HUGGINGFACE_API_KEY=hf_your_token_here ^
+    -e GITHUB_TOKEN=ghp_your_token_here ^
+    -e SLACK_TOKEN=xoxb_your_token_here ^
+    -e NOTION_TOKEN=secret_your_token_here ^
+    -v "/var/run/docker.sock:/var/run/docker.sock" ^
+    -v "C:/Temp:/tmp" ^
+    kestra/kestra:latest server local
+```
+
+### Scheduling Workflows
+
+To run workflows automatically:
+
+1. Open workflow in Kestra UI
+2. Click **Edit**
+3. Add trigger section:
+
+```yaml
+triggers:
+  - id: daily_analysis
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 9 * * *"  # 9 AM daily
+    disabled: false
+```
+
+4. Save workflow
+
+### Example Execution
+
+```
+
 ## 🔧 How It Works
 
 ### Architecture
