@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Form } from 'react-bootstrap';
+import { apiFetch } from '../utils/api';
 
 interface Branch {
     name: string;
@@ -33,7 +34,7 @@ const BranchSelector: React.FC<BranchSelectorProps> = ({ repository, selectedBra
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`http://localhost:3000/api/branches?repository=${encodeURIComponent(repository)}`);
+            const res = await apiFetch(`/api/branches?repository=${encodeURIComponent(repository)}`);
             if (!res.ok) {
                 throw new Error('Failed to fetch branches');
             }

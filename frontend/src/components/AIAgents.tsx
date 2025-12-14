@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Container, Nav, Tab, Button, Alert } from 'react-bootstrap';
+import { Container, Tab, Nav, Button, Alert } from 'react-bootstrap';
+import { apiFetch } from '../utils/api';
 import AgentRunner from './AgentRunner';
 import DecisionPanel from './DecisionPanel';
 
@@ -26,7 +27,7 @@ export default function AIAgents({ repository, branch }: AIAgentsProps) {
             setDecisionError(null);
             setDecisionResult(null);
 
-            const res = await fetch('http://localhost:3000/api/agents/decide', {
+            const res = await apiFetch('/api/agent?type=decide', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ summarizerJobId })
@@ -42,7 +43,7 @@ export default function AIAgents({ repository, branch }: AIAgentsProps) {
             // Poll for completion
             const pollInterval = setInterval(async () => {
                 try {
-                    const statusRes = await fetch(`http://localhost:3000/api/agents/status/${data.jobId}`);
+                    const statusRes = await apiFetch(`/api/agents/status/${data.jobId}`);
                     const statusData = await statusRes.json();
 
                     if (statusData.status === 'completed') {

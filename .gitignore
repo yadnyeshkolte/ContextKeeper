@@ -169,3 +169,4 @@ vendor/
 # OS System Files
 .DS_Store
 Thumbs.db
+.vercel

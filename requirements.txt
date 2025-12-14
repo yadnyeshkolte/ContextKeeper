@@ -1,0 +1,7 @@
+chromadb==0.4.15
+huggingface-hub==0.19.4
+requests==2.31.0
+python-dotenv==1.0.0
+PyGithub==2.1.1
+beautifulsoup4==4.12.2
+numpy==1.24.3

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, Button, Form, ProgressBar, Alert, Badge, Spinner } from 'react-bootstrap';
+import { apiFetch } from '../utils/api';
 
 interface AgentRunnerProps {
     agentType: 'github' | 'slack' | 'notion' | 'summarize';
@@ -32,7 +33,7 @@ export default function AgentRunner({ agentType, agentName, repository, branch, 
 
         const pollInterval = setInterval(async () => {
             try {
-                const res = await fetch(`http://localhost:3000/api/agents/status/${jobId}`);
+                const res = await apiFetch(`/api/agents/status/${jobId}`);
                 const data = await res.json();
                 setJobStatus(data);
 
@@ -58,7 +59,7 @@ export default function AgentRunner({ agentType, agentName, repository, branch, 
         setJobStatus(null);
 
         try {
-            const endpoint = `http://localhost:3000/api/agents/${agentType}`;
+            const endpoint = `/api/agent?type=${agentType}`;
             const body: any = { hours };
 
             if (agentType === 'github' || agentType === 'summarize') {
@@ -68,7 +69,7 @@ export default function AgentRunner({ agentType, agentName, repository, branch, 
                 body.repository = repository;
             }
 
-            const res = await fetch(endpoint, {
+            const res = await apiFetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -310,7 +311,7 @@ export default function AgentRunner({ agentType, agentName, repository, branch, 
                             Running Agent...
                         </>
                     ) : (
-                        `Run ${agentName}`
+                        `Run ${agentName} `
                     )}
                 </Button>
 

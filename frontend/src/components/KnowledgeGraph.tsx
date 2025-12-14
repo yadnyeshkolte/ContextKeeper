@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Card, Spinner, Alert, Badge, Button, ButtonGroup, Form, Modal } from 'react-bootstrap';
 import ForceGraph2D from 'react-force-graph-2d';
 import KnowledgeGraph3D from './KnowledgeGraph3D';
+import { apiFetch } from '../utils/api';
+
 
 // Define types for the graph data
 interface GraphNode {
@@ -74,7 +76,7 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ repository, branch }) =
         setLoading(true);
         setError(null);
 
-        fetch(`http://localhost:3000/api/knowledge-graph?repository=${encodeURIComponent(repository)}&branch=${encodeURIComponent(branch)}`)
+        apiFetch(`/api/knowledge-graph?repository=${encodeURIComponent(repository)}&branch=${encodeURIComponent(branch)}`)
             .then(res => res.json())
             .then((data: GraphData) => {
                 setGraphData(data);
@@ -87,6 +89,7 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ repository, branch }) =
                 setLoading(false);
             });
     }, [repository, branch]);
+
 
     // Color mapping for different node types
     const getNodeColor = (node: GraphNode) => {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, Button, Badge, Alert, Spinner, Row, Col } from 'react-bootstrap';
 import BranchSelector from './BranchSelector';
+import { apiFetch } from '../utils/api';
 
 interface SyncStatusData {
     chromadb: {
@@ -44,7 +45,7 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
             setIsFetchingStatus(true);
         }
         try {
-            const res = await fetch(`http://localhost:3000/api/status?repository=${encodeURIComponent(repository)}&branch=${encodeURIComponent(branch)}`);
+            const res = await apiFetch(`/api/status?repository=${encodeURIComponent(repository)}&branch=${encodeURIComponent(branch)}`);
             const data = await res.json();
             setStatus(data);
             setError(null);
@@ -63,7 +64,7 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
         setError(null);
         setSuccessMessage(null);
         try {
-            const res = await fetch('http://localhost:3000/api/sync-data', {
+            const res = await apiFetch('/api/sync-data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ repository, branch })
@@ -91,7 +92,7 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
         setError(null);
         setSuccessMessage(null);
         try {
-            const res = await fetch('http://localhost:3000/api/sync-repo', {
+            const res = await apiFetch('/api/sync-repo', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ repository })

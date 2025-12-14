@@ -7,6 +7,8 @@ import SyncStatus from './components/SyncStatus';
 import RepositorySelector from './components/RepositorySelector';
 import NotificationOverlay from './components/NotificationOverlay';
 import AIAgents from './components/AIAgents';
+import { apiFetch } from './utils/api';
+
 
 interface Source {
   type: string;
@@ -63,7 +65,7 @@ function App() {
   useEffect(() => {
     const checkForUpdates = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/check-updates?repository=${repository}&branch=${branch}`);
+        const res = await apiFetch(`/api/check-updates?repository=${repository}&branch=${branch}`);
         const data = await res.json();
 
         if (data.has_updates) {
@@ -86,12 +88,13 @@ function App() {
     return () => clearInterval(interval);
   }, [repository, branch]);
 
+
   const handleQuery = async () => {
     if (!query) return;
     setLoading(true);
     setResult(null);
     try {
-      const res = await fetch('http://localhost:3000/api/query', {
+      const res = await apiFetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: query, repository, branch })
@@ -107,7 +110,7 @@ function App() {
 
   const handleFetchUpdates = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/sync-data', {
+      const res = await apiFetch('/api/sync-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repository, branch })
