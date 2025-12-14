@@ -39,6 +39,27 @@ ContextKeeper is a local-first AI agent that connects GitHub, Slack, and Documen
 
 > **📖 For detailed architecture information**, see the [Developer Guide](docs/DEVELOPER_GUIDE.md) and [Architecture Overview](docs/architecture.md).
 
+This project implements specific features to qualify for the following Hackathon tracks:
+
+#### **Requirement:** Use Kestra's built-in AI Agent to summarize data and make decisions.
+- **Implementation:** The [`kestra/flows/unified-contextkeeper-flow-v2.yml`](kestra/flows/unified-contextkeeper-flow-v2.yml) defines a comprehensive workflow that collects data from **Slack**, **GitHub**, and **Notion**.
+- **AI-Driven Logic:** It uses the **Interface-based AI Agent** pattern with the `io.kestra.plugin.ai.completion.ChatCompletion` task (using `meta-llama/Llama-3.1-70B-Instruct`) to:
+    - Summarize team activity across all platforms.
+    - Identify urgent items (bugs, blockers).
+    - **Make Decisions:** It generates a structured decision report (`ai_decisions.json`) categorizing items as CRITICAL, HIGH, MEDIUM, or LOW, and recommends specific actions.
+
+#### **Requirement:** Use Cline CLI to build powerful autonomous coding workflows.
+- **Implementation:** ContextKeeper acts as the "memory layer" for autonomous agents like **Cline**, providing them with the context needed to make informed changes.
+- **Workflows:** We utilize `.github/workflows/cline-responder.yml` (and other agentic workflows) to enable autonomous interactions where Cline can be triggered to respond to repository events, effectively acting as an autonomous maintainer.
+
+#### **Requirement:** Best open-source engineering using CodeRabbit.
+- **Implementation:** We have fully integrated **CodeRabbit** for autonomous PR reviews and keeping the codebase clean.
+- **Configuration:** The [`.coderabbit.yaml`](.coderabbit.yaml) file is customized to:
+    - Enable high-level summaries and detailed code review.
+    - Auto-reply to chat interactions (`chat.auto_reply: true`).
+    - Enforce stringent checks (`shellcheck`, `actionlint`, `eslint`, `prettier`).
+- **Workflow:** The system is set up to provide immediate feedback on every Pull Request, ensuring high code quality and documentation standards.
+
 ## � Prerequisites
 
 - Docker & Docker Compose
