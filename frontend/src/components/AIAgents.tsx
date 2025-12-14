@@ -9,9 +9,11 @@ interface AIAgentsProps {
 }
 
 export default function AIAgents({ repository, branch }: AIAgentsProps) {
-    const [summarizerJobId] = useState<string | null>(null);
-    const [, setDecisionJobId] = useState<string | null>(null);
+    const [summarizerJobId, setSummarizerJobId] = useState<string | null>(null);
+    const [decisionJobId, setDecisionJobId] = useState<string | null>(null);
     const [decisionResult, setDecisionResult] = useState<any>(null);
+    const [isLoadingDecision, setIsLoadingDecision] = useState(false);
+    const [decisionError, setDecisionError] = useState<string | null>(null);
 
     const runDecisionEngine = async () => {
         if (!summarizerJobId) {
@@ -20,6 +22,10 @@ export default function AIAgents({ repository, branch }: AIAgentsProps) {
         }
 
         try {
+            setIsLoadingDecision(true);
+            setDecisionError(null);
+            setDecisionResult(null);
+
             const res = await fetch('http://localhost:3000/api/agents/decide', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -27,23 +33,34 @@ export default function AIAgents({ repository, branch }: AIAgentsProps) {
             });
 
             const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to start decision engine');
+            }
+
             setDecisionJobId(data.jobId);
 
             // Poll for completion
             const pollInterval = setInterval(async () => {
-                const statusRes = await fetch(`http://localhost:3000/api/agents/status/${data.jobId}`);
-                const statusData = await statusRes.json();
+                try {
+                    const statusRes = await fetch(`http://localhost:3000/api/agents/status/${data.jobId}`);
+                    const statusData = await statusRes.json();
 
-                if (statusData.status === 'completed') {
-                    setDecisionResult(statusData.result);
-                    clearInterval(pollInterval);
-                } else if (statusData.status === 'failed') {
-                    alert('Decision engine failed: ' + statusData.error);
-                    clearInterval(pollInterval);
+                    if (statusData.status === 'completed') {
+                        setDecisionResult(statusData.result);
+                        setIsLoadingDecision(false);
+                        clearInterval(pollInterval);
+                    } else if (statusData.status === 'failed') {
+                        setDecisionError(statusData.error || 'Decision engine failed');
+                        setIsLoadingDecision(false);
+                        clearInterval(pollInterval);
+                    }
+                } catch (err: any) {
+                    console.error('Failed to poll decision engine status:', err);
                 }
             }, 2000);
         } catch (err: any) {
-            alert('Failed to run decision engine: ' + err.message);
+            setDecisionError(err.message || 'Failed to run decision engine');
+            setIsLoadingDecision(false);
         }
     };
 
@@ -109,10 +126,11 @@ export default function AIAgents({ repository, branch }: AIAgentsProps) {
                             agentName="AI Summarizer (All Agents)"
                             repository={repository}
                             branch={branch}
+                            onJobComplete={(jobId) => setSummarizerJobId(jobId)}
                         />
                         {summarizerJobId && (
                             <Alert variant="success" className="mt-3">
-                                Summarizer job ID: <code>{summarizerJobId}</code>
+                                ✓ Summarizer completed successfully! Job ID: <code>{summarizerJobId}</code>
                                 <br />
                                 <Button variant="primary" size="sm" className="mt-2" onClick={runDecisionEngine}>
                                     Run Decision Engine →
@@ -132,10 +150,27 @@ export default function AIAgents({ repository, branch }: AIAgentsProps) {
                             </Alert>
                         )}
 
-                        {summarizerJobId && !decisionResult && (
+                        {summarizerJobId && !isLoadingDecision && !decisionResult && (
                             <Button variant="primary" onClick={runDecisionEngine}>
                                 Run Decision Engine
                             </Button>
+                        )}
+
+                        {isLoadingDecision && (
+                            <Alert variant="info">
+                                <div className="d-flex align-items-center">
+                                    <div className="spinner-border spinner-border-sm me-2" role="status">
+                                        <span className="visually-hidden">Loading...</span>
+                                    </div>
+                                    Running decision engine analysis... (Job ID: {decisionJobId})
+                                </div>
+                            </Alert>
+                        )}
+
+                        {decisionError && (
+                            <Alert variant="danger">
+                                <strong>Error:</strong> {decisionError}
+                            </Alert>
                         )}
 
                         {decisionResult && <DecisionPanel decisions={decisionResult} />}
