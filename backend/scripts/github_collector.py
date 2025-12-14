@@ -469,10 +469,19 @@ class GitHubCollector:
         try:
             commits = self.repo.get_commits(since=since)
             for commit in commits:
+                # Use GitHub username (login) for consistency, fallback to Git author name
+                author_name = "Unknown"
+                if commit.author and commit.author.login:
+                    # Prefer GitHub username for consistency
+                    author_name = commit.author.login
+                elif commit.commit.author and commit.commit.author.name:
+                    # Fallback to Git author name
+                    author_name = commit.commit.author.name
+                
                 recent_commits.append({
                     "type": "commit",
                     "message": commit.commit.message,
-                    "author": commit.commit.author.name,
+                    "author": author_name,
                     "date": commit.commit.author.date.isoformat(),
                     "url": commit.html_url
                 })
