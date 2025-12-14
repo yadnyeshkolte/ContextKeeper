@@ -1,0 +1,532 @@
+id: unified_contextkeeper_flow
+namespace: contextkeeper
+description: AI-powered data collection and analysis using Kestra's built-in AI Agent
+
+inputs:
+  - id: hours
+    type: INT
+    defaults: 24
+    description: "Time period in hours to collect data (e.g., 24, 48, 168)"
+  
+  - id: user_query
+    type: STRING
+    defaults: "Analyze all collected data and provide key insights about team activity, development progress, urgent items, and actionable recommendations."
+    description: "What would you like the AI agent to analyze and decide?"
+
+variables:
+  slack_channels: "online-voting-system"
+  github_repo: "yadnyeshkolte/online-voting-system"
+
+tasks:
+  # Collect data from all sources in parallel
+  - id: parallel_data_collection
+    type: io.kestra.plugin.core.flow.Parallel
+    tasks:
+      - id: collect_slack_data
+        type: io.kestra.plugin.scripts.python.Script
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+        containerImage: python:3.11-slim
+        outputFiles:
+          - "*.json"
+        beforeCommands:
+          - pip install --quiet slack-sdk python-dotenv
+        env:
+          SLACK_TOKEN: "your_slack_token"
+          SLACK_CHANNELS: "{{ vars.slack_channels }}"
+          HOURS: "{{ inputs.hours }}"
+        script: |
+          import json
+          import os
+          from datetime import datetime, timedelta
+          from slack_sdk import WebClient
+          from slack_sdk.errors import SlackApiError
+          
+          slack_token = os.getenv('SLACK_TOKEN')
+          channels = os.getenv('SLACK_CHANNELS', 'online-voting-system').split(',')
+          
+          client = WebClient(token=slack_token)
+          hours = int(os.getenv('HOURS', '24'))
+          oldest = (datetime.utcnow() - timedelta(hours=hours)).timestamp()
+          
+          slack_data = {
+              'messages': [],
+              'metadata': {
+                  'channels': channels,
+                  'period_hours': hours,
+                  'collected_at': datetime.utcnow().isoformat()
+              }
+          }
+          
+          try:
+              for channel_name in channels:
+                  try:
+                      channels_list = client.conversations_list()
+                      channel_id = None
+                      for channel in channels_list['channels']:
+                          if channel['name'] == channel_name.strip():
+                              channel_id = channel['id']
+                              break
+                      
+                      if not channel_id:
+                          print(f"⚠️ Channel '{channel_name}' not found")
+                          continue
+                      
+                      try:
+                          client.conversations_join(channel=channel_id)
+                          print(f"✅ Joined channel #{channel_name}")
+                      except SlackApiError as join_error:
+                          if join_error.response['error'] != 'already_in_channel':
+                              print(f"⚠️ Could not join #{channel_name}")
+                              continue
+                      
+                      result = client.conversations_history(
+                          channel=channel_id,
+                          oldest=oldest,
+                          limit=200
+                      )
+                      
+                      for message in result['messages']:
+                          slack_data['messages'].append({
+                              'channel': channel_name,
+                              'text': message.get('text', ''),
+                              'user': message.get('user', 'unknown'),
+                              'timestamp': message.get('ts', ''),
+                              'thread_ts': message.get('thread_ts'),
+                              'reply_count': message.get('reply_count', 0)
+                          })
+                      
+                      print(f"✅ Slack: {len(result['messages'])} messages from #{channel_name}")
+                  except SlackApiError as e:
+                      print(f"⚠️ Slack error: {e.response['error']}")
+          except Exception as e:
+              print(f"⚠️ Slack Error: {e}")
+          
+          with open('slack_data.json', 'w') as f:
+              json.dump(slack_data, f, indent=2)
+          
+          print(json.dumps({'success': True, 'message_count': len(slack_data['messages'])}))
+
+      - id: collect_github_data
+        type: io.kestra.plugin.scripts.python.Script
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+        containerImage: python:3.11-slim
+        outputFiles:
+          - "*.json"
+        beforeCommands:
+          - pip install --quiet requests python-dateutil
+        env:
+          GITHUB_REPO: "{{ vars.github_repo }}"
+          HOURS: "{{ inputs.hours }}"
+        script: |
+          import json
+          import os
+          import requests
+          from datetime import datetime, timedelta
+          from dateutil import parser as date_parser
+          
+          repo_name = os.getenv('GITHUB_REPO', 'yadnyeshkolte/online-voting-system')
+          hours = int(os.getenv('HOURS', '24'))
+          
+          github_data = {
+              'commits': [],
+              'issues': [],
+              'pull_requests': [],
+              'urgent_items': [],
+              'metadata': {
+                  'repo': repo_name,
+                  'period_hours': hours,
+                  'collected_at': datetime.utcnow().isoformat()
+              }
+          }
+          
+          base_url = f"https://api.github.com/repos/{repo_name}"
+          headers = {
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'Kestra-Workflow'
+          }
+          
+          since_time = datetime.utcnow() - timedelta(hours=hours)
+          since_str = since_time.isoformat() + 'Z'
+          
+          try:
+              print(f"🔍 Fetching GitHub data for {repo_name}")
+              
+              commits_url = f"{base_url}/commits?since={since_str}&per_page=100"
+              response = requests.get(commits_url, headers=headers)
+              
+              if response.status_code == 200:
+                  commits = response.json()
+                  for commit in commits[:50]:
+                      github_data['commits'].append({
+                          'sha': commit['sha'][:7],
+                          'message': commit['commit']['message'],
+                          'author': commit['commit']['author']['name'],
+                          'date': commit['commit']['author']['date'],
+                          'url': commit['html_url']
+                      })
+              
+              issues_url = f"{base_url}/issues?state=all&since={since_str}&per_page=100"
+              response = requests.get(issues_url, headers=headers)
+              
+              if response.status_code == 200:
+                  issues = response.json()
+                  for issue in issues[:50]:
+                      if 'pull_request' not in issue:
+                          issue_data = {
+                              'number': issue['number'],
+                              'title': issue['title'],
+                              'body': issue['body'][:300] if issue['body'] else '',
+                              'state': issue['state'],
+                              'created_at': issue['created_at'],
+                              'labels': [label['name'] for label in issue.get('labels', [])],
+                              'url': issue['html_url'],
+                              'comments': issue['comments']
+                          }
+                          github_data['issues'].append(issue_data)
+                          
+                          is_urgent = (
+                              any(label in ['bug', 'critical', 'urgent', 'security'] 
+                                  for label in issue_data['labels']) or
+                              'urgent' in issue['title'].lower() or
+                              'critical' in issue['title'].lower()
+                          )
+                          
+                          if is_urgent and issue['state'] == 'open':
+                              github_data['urgent_items'].append({
+                                  'number': issue['number'],
+                                  'title': issue['title'],
+                                  'type': 'issue',
+                                  'labels': issue_data['labels'],
+                                  'url': issue['html_url']
+                              })
+              
+              prs_url = f"{base_url}/pulls?state=all&per_page=50"
+              response = requests.get(prs_url, headers=headers)
+              
+              if response.status_code == 200:
+                  prs = response.json()
+                  for pr in prs:
+                      pr_created = date_parser.parse(pr['created_at']).replace(tzinfo=None)
+                      if pr_created >= since_time.replace(tzinfo=None):
+                          github_data['pull_requests'].append({
+                              'number': pr['number'],
+                              'title': pr['title'],
+                              'state': pr['state'],
+                              'created_at': pr['created_at'],
+                              'url': pr['html_url'],
+                              'merged': pr.get('merged_at') is not None
+                          })
+              
+              print(f"✅ GitHub: {len(github_data['commits'])} commits, {len(github_data['issues'])} issues")
+              
+          except Exception as e:
+              print(f"⚠️ GitHub Error: {e}")
+              github_data['metadata']['error'] = str(e)
+          
+          with open('github_data.json', 'w') as f:
+              json.dump(github_data, f, indent=2)
+          
+          print(json.dumps({'success': True}))
+
+      - id: collect_notion_data
+        type: io.kestra.plugin.scripts.python.Script
+        taskRunner:
+          type: io.kestra.plugin.scripts.runner.docker.Docker
+        containerImage: python:3.11-slim
+        outputFiles:
+          - "*.json"
+        beforeCommands:
+          - pip install --quiet notion-client
+        env:
+          NOTION_TOKEN: "your_notion_token"
+          HOURS: "{{ inputs.hours }}"
+        script: |
+          import json
+          import os
+          from datetime import datetime
+          from notion_client import Client
+          
+          notion_token = os.getenv('NOTION_TOKEN')
+          hours = int(os.getenv('HOURS', '24'))
+          
+          notion_data = {
+              'pages': [],
+              'metadata': {
+                  'collected_at': datetime.utcnow().isoformat(),
+                  'period_hours': hours
+              }
+          }
+          
+          if not notion_token:
+              with open('notion_data.json', 'w') as f:
+                  json.dump(notion_data, f, indent=2)
+              print(json.dumps({'success': False}))
+              exit(0)
+          
+          try:
+              notion = Client(auth=notion_token)
+              search_results = notion.search(
+                  filter={"property": "object", "value": "page"},
+                  sort={"direction": "descending", "timestamp": "last_edited_time"}
+              )
+              
+              for page in search_results.get('results', [])[:50]:
+                  page_data = {
+                      'id': page['id'],
+                      'created_time': page.get('created_time', ''),
+                      'last_edited_time': page.get('last_edited_time', ''),
+                      'url': page.get('url', '')
+                  }
+                  
+                  properties = page.get('properties', {})
+                  title_prop = properties.get('title', {}) or properties.get('Name', {})
+                  if title_prop and title_prop.get('title'):
+                      title_text = title_prop['title'][0].get('plain_text', '') if title_prop['title'] else ''
+                      page_data['title'] = title_text
+                  
+                  notion_data['pages'].append(page_data)
+              
+              print(f"✅ Notion: {len(notion_data['pages'])} pages")
+          except Exception as e:
+              print(f"⚠️ Notion Error: {e}")
+          
+          with open('notion_data.json', 'w') as f:
+              json.dump(notion_data, f, indent=2)
+          
+          print(json.dumps({'success': True}))
+
+  # Prepare unified context for AI Agent
+  - id: prepare_ai_context
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.11-slim
+    inputFiles:
+      slack_data.json: "{{ outputs.collect_slack_data.outputFiles['slack_data.json'] ?? '{}' }}"
+      github_data.json: "{{ outputs.collect_github_data.outputFiles['github_data.json'] ?? '{}' }}"
+      notion_data.json: "{{ outputs.collect_notion_data.outputFiles['notion_data.json'] ?? '{}' }}"
+    outputFiles:
+      - "*.txt"
+    script: |
+      import json
+      
+      def safe_load(f):
+          try:
+              with open(f, 'r') as file:
+                  return json.load(file)
+          except:
+              return {}
+      
+      slack = safe_load('slack_data.json')
+      github = safe_load('github_data.json')
+      notion = safe_load('notion_data.json')
+      
+      context_lines = []
+      context_lines.append("=== DATA COLLECTION CONTEXT ===\n")
+      context_lines.append(f"Collection Period: Last {slack.get('metadata', {}).get('period_hours', 24)} hours\n")
+      context_lines.append(f"Timestamp: {slack.get('metadata', {}).get('collected_at', 'N/A')}\n\n")
+      
+      context_lines.append("--- SLACK DATA ---\n")
+      context_lines.append(f"Total Messages: {len(slack.get('messages', []))}\n")
+      context_lines.append(f"Channels: {', '.join(slack.get('metadata', {}).get('channels', []))}\n\n")
+      
+      if slack.get('messages'):
+          context_lines.append("Recent Messages:\n")
+          for msg in slack.get('messages', [])[:20]:
+              context_lines.append(f"- {msg.get('user', 'Unknown')}: {msg.get('text', '')[:150]}\n")
+          context_lines.append("\n")
+      
+      context_lines.append("--- GITHUB DATA ---\n")
+      context_lines.append(f"Repository: {github.get('metadata', {}).get('repo', 'N/A')}\n")
+      context_lines.append(f"Commits: {len(github.get('commits', []))}\n")
+      context_lines.append(f"Issues: {len(github.get('issues', []))}\n")
+      context_lines.append(f"Pull Requests: {len(github.get('pull_requests', []))}\n")
+      context_lines.append(f"Urgent Items: {len(github.get('urgent_items', []))}\n\n")
+      
+      if github.get('commits'):
+          context_lines.append("Recent Commits:\n")
+          for commit in github.get('commits', [])[:15]:
+              context_lines.append(f"- {commit['author']}: {commit['message'][:100]}\n")
+          context_lines.append("\n")
+      
+      if github.get('urgent_items'):
+          context_lines.append("URGENT ITEMS:\n")
+          for item in github.get('urgent_items', []):
+              context_lines.append(f"- Issue #{item['number']}: {item['title']}\n")
+              context_lines.append(f"  Labels: {', '.join(item.get('labels', []))}\n")
+              context_lines.append(f"  URL: {item['url']}\n")
+          context_lines.append("\n")
+      
+      if github.get('issues'):
+          context_lines.append("Open Issues:\n")
+          for issue in github.get('issues', [])[:10]:
+              if issue['state'] == 'open':
+                  context_lines.append(f"- Issue #{issue['number']}: {issue['title']}\n")
+                  if issue.get('body'):
+                      context_lines.append(f"  Description: {issue['body'][:200]}\n")
+          context_lines.append("\n")
+      
+      if github.get('pull_requests'):
+          context_lines.append("Pull Requests:\n")
+          for pr in github.get('pull_requests', [])[:10]:
+              status = "MERGED" if pr.get('merged') else pr['state'].upper()
+              context_lines.append(f"- PR #{pr['number']} [{status}]: {pr['title']}\n")
+          context_lines.append("\n")
+      
+      context_lines.append("--- NOTION DATA ---\n")
+      context_lines.append(f"Total Pages: {len(notion.get('pages', []))}\n\n")
+      
+      if notion.get('pages'):
+          context_lines.append("Recently Updated Pages:\n")
+          for page in notion.get('pages', [])[:15]:
+              title = page.get('title', 'Untitled')
+              edited = page.get('last_edited_time', 'N/A')[:10]
+              context_lines.append(f"- {title} (edited: {edited})\n")
+      
+      context = ''.join(context_lines)
+      
+      with open('ai_context.txt', 'w') as f:
+          f.write(context)
+      
+      print("✅ AI context prepared")
+      print(f"Context length: {len(context)} characters")
+
+  # KESTRA AI AGENT - Analyzes and makes autonomous decisions
+  - id: ai_agent_analysis
+    type: io.kestra.plugin.ai.agent.AIAgent
+    provider:
+      type: io.kestra.plugin.ai.provider.HuggingFace
+      apiKey: "your_api_key"
+      modelName: "meta-llama/Llama-3.1-70B-Instruct"
+    systemMessage: |
+      You are an AI agent analyzing data from multiple systems (Slack, GitHub, Notion).
+      You have the ability to think critically and make autonomous decisions.
+      
+      Your responsibilities:
+      1. Analyze and summarize the collected data comprehensively
+      2. Identify patterns, trends, and anomalies across all systems
+      3. Highlight urgent items requiring immediate attention
+      4. Make data-driven decisions and prioritized recommendations
+      5. Think through problems step-by-step before making decisions
+      6. Provide actionable next steps for the team
+      
+      Decision-making framework:
+      - CRITICAL: Issues labeled as critical/urgent/security or blocking development
+      - HIGH: Development blockers, unanswered questions in Slack, stale PRs (>7 days)
+      - MEDIUM: Regular issues, normal development activity, documentation needs
+      - LOW: Minor updates, informational items
+      
+      When analyzing the data:
+      - Look for patterns in commit activity (is development slowing down?)
+      - Identify unanswered questions in Slack that need responses
+      - Flag pull requests that have gone stale
+      - Cross-reference GitHub issues with Slack discussions
+      - Spot disconnects between planning (Notion) and execution (GitHub)
+      
+      Provide your analysis in this structure:
+      
+      ## Executive Summary
+      2-3 sentences summarizing the overall health and key findings.
+      
+      ## Key Findings
+      - List 3-5 most important observations from the data
+      - Include specific numbers and examples
+      
+      ## Urgent Items & Decisions
+      List items by priority (CRITICAL, HIGH, MEDIUM) with:
+      - What: Clear description of the issue
+      - Why urgent: Impact on the project
+      - Recommended action: Specific next step
+      - Owner: Who should handle this
+      
+      ## Team Activity Analysis
+      - Development velocity trends
+      - Communication patterns
+      - Blockers and bottlenecks
+      
+      ## Automated Recommendations
+      Specific actions that should be taken, such as:
+      - Send reminders for stale PRs
+      - Alert team about unanswered questions
+      - Schedule follow-up meetings
+      - Create tracking issues
+      
+      Be specific, actionable, and data-driven in all recommendations.
+    prompt: |
+      {{ outputs.prepare_ai_context.outputFiles['ai_context.txt'] }}
+      
+      User's Question: {{ inputs.user_query }}
+      
+      Based on all the data above, provide a comprehensive analysis and make decisions on what actions should be taken.
+      Remember to think step-by-step and provide specific, actionable recommendations.
+
+  # Process AI decisions and create actionable outputs
+  - id: process_ai_decisions
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.scripts.runner.docker.Docker
+    containerImage: python:3.11-slim
+    outputFiles:
+      - "*.txt"
+      - "*.json"
+    script: |
+      import json
+      from datetime import datetime
+      
+      # Get AI agent outputs
+      ai_response = """{{ outputs.ai_agent_analysis.text ?? outputs.ai_agent_analysis.textOutput ?? 'No response generated' }}"""
+      
+      # Create formatted report
+      report = []
+      report.append("=" * 80)
+      report.append("AI AGENT ANALYSIS & DECISION REPORT")
+      report.append("=" * 80)
+      report.append(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+      report.append(f"User Query: {{ inputs.user_query }}")
+      report.append(f"Agent Type: Autonomous AI Agent (io.kestra.plugin.ai.agent.AIAgent)")
+      report.append(f"Model: meta-llama/Llama-3.1-70B-Instruct")
+      report.append("")
+      report.append("=== AI AGENT AUTONOMOUS ANALYSIS ===")
+      report.append(ai_response)
+      report.append("")
+      report.append("=" * 80)
+      report.append("END OF AI ANALYSIS")
+      report.append("=" * 80)
+      
+      report_text = "\n".join(report)
+      
+      with open('ai_agent_report.txt', 'w') as f:
+          f.write(report_text)
+      
+      # Create structured JSON output
+      decisions = {
+          'timestamp': datetime.utcnow().isoformat(),
+          'user_query': '{{ inputs.user_query }}',
+          'analysis': ai_response,
+          'provider': 'HuggingFace',
+          'model': 'meta-llama/Llama-3.1-70B-Instruct',
+          'agent_type': 'AIAgent',
+          'autonomous': True,
+          'capabilities': [
+              'Data summarization from multiple systems',
+              'Pattern recognition and anomaly detection',
+              'Priority-based decision making',
+              'Actionable recommendations'
+          ]
+      }
+      
+      with open('ai_decisions.json', 'w') as f:
+          json.dump(decisions, f, indent=2)
+      
+      print(report_text)
+      print("\n✅ AI Agent completed autonomous analysis and decisions")
+
+triggers:
+  - id: daily_analysis
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 9 * * *"
+    inputs:
+      hours: 24
+      user_query: "Provide daily summary with urgent items and recommendations"
