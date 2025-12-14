@@ -257,9 +257,41 @@ GITHUB_REPO=owner/repo
 SLACK_CHANNELS=general,dev-team
 ```
 
-#### Start Kestra with Docker Compose
+#### Start Kestra
+
+**Option 1: Docker Compose (Recommended)**
 ```bash
-docker-compose up -d
+docker-compose --env-file .env up -d
+```
+
+**Option 2: Docker Run (Quick Start)**
+
+**Linux/macOS:**
+```bash
+docker run --pull=always --rm -it -p 8080:8080 --user=root \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /tmp:/tmp kestra/kestra:latest server local
+```
+
+**Windows PowerShell:**
+```powershell
+docker run --pull=always --rm -it -p 8080:8080 --user=root `
+    -v "/var/run/docker.sock:/var/run/docker.sock" `
+    -v "C:/Temp:/tmp" kestra/kestra:latest server local
+```
+
+**Windows Command Prompt (CMD):**
+```cmd
+docker run --pull=always --rm -it -p 8080:8080 --user=root ^
+    -v "/var/run/docker.sock:/var/run/docker.sock" ^
+    -v "C:/Temp:/tmp" kestra/kestra:latest server local
+```
+
+**Windows WSL:**
+```bash
+docker run --pull=always --rm -it -p 8080:8080 --user=root \
+    -v "/var/run/docker.sock:/var/run/docker.sock" \
+    -v "/mnt/c/Temp:/tmp" kestra/kestra:latest server local
 ```
 
 Kestra UI will be available at `http://localhost:8080`.
@@ -267,7 +299,9 @@ Kestra UI will be available at `http://localhost:8080`.
 **Import Workflows:**
 1. Open Kestra UI at `http://localhost:8080`
 2. Navigate to **Flows** → **Create** → **Import YAML**
-3. Import workflow files from the `kestra/flows/` directory
+3. Import `kestra/flows/unified-contextkeeper-flow-v2.yml` (recommended)
+4. Configure workflow inputs (Slack token, HuggingFace token, GitHub repo, etc.)
+5. Execute the workflow
 
 ## ⚡ Quick Start
 

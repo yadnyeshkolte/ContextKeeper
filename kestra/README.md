@@ -35,69 +35,128 @@ ContextKeeper is a unified data intelligence platform that automatically:
 
 ### Prerequisites
 
-- [Kestra](https://kestra.io) instance (version 0.15.0+)
+- Docker installed and running - [Download Docker](https://www.docker.com/products/docker-desktop)
 - API tokens for:
-  - Slack (Bot Token with appropriate scopes)
-  - HuggingFace (for AI model access)
-  - GitHub (optional, but recommended for higher rate limits)
-  - Notion (optional)
+  - **Slack** (Bot Token with appropriate scopes) - Required
+  - **HuggingFace** (for AI model access) - Required
+  - **GitHub** (Personal Access Token, optional but recommended) - Optional
+  - **Notion** (Integration Token) - Optional
 
 ### Installation
 
-1. **Clone or download** this workflow YAML file
+#### Option 1: Docker Compose (Recommended for Production)
 
-2. **Import into Kestra**:
-   ```bash   
-   # via Kestra UI
-   # Navigate to Flows → Create → Import YAML
-   ```
+1. **Navigate to kestra directory:**
+```bash
+cd kestra
+```
 
-```txt
-# my testing kestra server with docker
+2. **Configure environment variables:**
+```bash
+cp .env.example .env
+# Edit .env with your API keys
+```
 
+3. **Start Kestra:**
+```bash
 docker-compose --env-file .env up -d
+```
 
-#for windows - local kestra server with docker
+4. **Access Kestra UI:**
+Open `http://localhost:8080` in your browser
 
+#### Option 2: Docker Run (Quick Start for Local Development)
+
+**For Linux/macOS:**
+```bash
+docker run --pull=always --rm -it -p 8080:8080 --user=root \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /tmp:/tmp kestra/kestra:latest server local
+```
+
+**For Windows PowerShell:**
+```powershell
+docker run --pull=always --rm -it -p 8080:8080 --user=root `
+    -v "/var/run/docker.sock:/var/run/docker.sock" `
+    -v "C:/Temp:/tmp" kestra/kestra:latest server local
+```
+
+**For Windows Command Prompt (CMD):**
+```cmd
 docker run --pull=always --rm -it -p 8080:8080 --user=root ^
-    -e HUGGINGFACE_API_KEY=hf_your_token_here ^
     -v "/var/run/docker.sock:/var/run/docker.sock" ^
     -v "C:/Temp:/tmp" kestra/kestra:latest server local
 ```
 
-3. **Configure your tokens** in the execution inputs
+**For Windows WSL (Linux-based environment in Windows):**
+```bash
+docker run --pull=always --rm -it -p 8080:8080 --user=root \
+    -v "/var/run/docker.sock:/var/run/docker.sock" \
+    -v "/mnt/c/Temp:/tmp" kestra/kestra:latest server local
+```
+
+5. **Access the Kestra UI:**
+Open `http://localhost:8080` in your browser
+
+### Importing Workflows
+
+1. In Kestra UI, navigate to **Flows** → **Create** → **Import YAML**
+2. Select the workflow file from `kestra/flows/` directory
+3. **Recommended workflow**: `unified-contextkeeper-flow-v2.yml` (latest version)
+4. Click **Import**
 
 ### Configuration
 
-#### Required Inputs
+#### Recommended Workflow: `unified-contextkeeper-flow-v2.yml`
 
-| Input | Description | Example |
-|-------|-------------|---------|
-| `slack_token` | Slack Bot Token | `xoxb-your-token` |
-| `huggingface_token` | HuggingFace API Token | `hf_xxxxx` |
-| `github_repo` | Repository to monitor | `owner/repo` |
-| `slack_channels` | Channels to monitor | `general,dev-team` |
+This is the main workflow for comprehensive data collection and AI analysis.
 
-#### Optional Inputs
+**Required Inputs:**
 
-| Input | Description | Default |
-|-------|-------------|---------|
-| `github_token` | GitHub PAT (increases rate limits) | None |
-| `notion_token` | Notion Integration Token | None |
-| `hours` | Time period for data collection | 24 |
-| `user_query` | Custom analysis query | Auto-generated |
+| Input | Type | Required | Description | Example |
+|-------|------|----------|-------------|---------|
+| `slack_token` | STRING | ✅ Yes | Slack Bot Token | `xoxb-your-token` |
+| `huggingface_token` | STRING | ✅ Yes | HuggingFace API Token | `hf_xxxxx` |
+| `github_repo` | STRING | ✅ Yes | GitHub repository | `owner/repo` |
+| `slack_channels` | STRING | ✅ Yes | Comma-separated Slack channels | `general,dev-team` |
+
+**Optional Inputs:**
+
+| Input | Type | Default | Description |
+|-------|------|---------|-------------|
+| `github_token` | STRING | - | GitHub PAT (increases rate limits from 60 to 5000 req/hour) |
+| `notion_token` | STRING | - | Notion Integration Token |
+| `hours` | INT | 24 | Time period for data collection (hours) |
+| `user_query` | STRING | Auto-generated | Custom analysis query for AI agent |
+
+**Default User Query:**
+```
+"Analyze all collected data and provide key insights about team activity, 
+development progress, urgent items, and actionable recommendations."
+```
 
 ### Example Execution
+
+1. **Open the workflow** in Kestra UI
+2. **Click "Execute"**
+3. **Fill in the required inputs:**
 
 ```yaml
 inputs:
   slack_token: "xoxb-your-slack-token"
-  huggingface_token: "hf_your-token"
-  github_repo: "yourusername/your-repo"
-  slack_channels: "engineering,product"
-  hours: 48
+  huggingface_token: "hf_your-huggingface-token"
+  github_repo: "yadnyeshkolte/ContextKeeper"
+  slack_channels: "general,dev-team"
+  github_token: "ghp_your-github-token"  # Optional
+  notion_token: "secret_your-notion-token"  # Optional
+  hours: 24
   user_query: "What are the critical blockers and how should we prioritize this week?"
 ```
+
+4. **Click "Execute"** to start the workflow
+5. **Monitor progress** in the Execution view
+6. **View results** when complete
+
 
 ## 📁 Workflow Files
 
