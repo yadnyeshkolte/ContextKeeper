@@ -6,6 +6,8 @@
 
 ContextKeeper is a local-first AI agent that connects GitHub, Slack, and Documentation to provide contextual memory for your team. It answers "why" questions about code decisions by leveraging a Knowledge Graph and RAG (Retrieval-Augmented Generation).
 
+> **📚 New to ContextKeeper?** Check out the [complete documentation](docs/README.md) for detailed guides, or jump to [Usage Examples](docs/USAGE_EXAMPLES.md) to see it in action.
+
 ## Table of Contents
 
 - [Features](#-features)
@@ -35,6 +37,29 @@ ContextKeeper is a local-first AI agent that connects GitHub, Slack, and Documen
 - **Frontend**: React + Vite
 - **Database**: MongoDB (Local or Atlas) & ChromaDB (Vector)
 
+> **📖 For detailed architecture information**, see the [Developer Guide](docs/DEVELOPER_GUIDE.md) and [Architecture Overview](docs/architecture.md).
+
+This project implements specific features to qualify for the following Hackathon tracks:
+
+#### **Requirement:** Use Kestra's built-in AI Agent to summarize data and make decisions.
+- **Implementation:** The [`kestra/flows/unified-contextkeeper-flow-v2.yml`](kestra/flows/unified-contextkeeper-flow-v2.yml) defines a comprehensive workflow that collects data from **Slack**, **GitHub**, and **Notion**.
+- **AI-Driven Logic:** It uses the **Interface-based AI Agent** pattern with the `io.kestra.plugin.ai.completion.ChatCompletion` task (using `meta-llama/Llama-3.1-70B-Instruct`) to:
+    - Summarize team activity across all platforms.
+    - Identify urgent items (bugs, blockers).
+    - **Make Decisions:** It generates a structured decision report (`ai_decisions.json`) categorizing items as CRITICAL, HIGH, MEDIUM, or LOW, and recommends specific actions.
+
+#### **Requirement:** Use Cline CLI to build powerful autonomous coding workflows.
+- **Implementation:** ContextKeeper acts as the "memory layer" for autonomous agents like **Cline**, providing them with the context needed to make informed changes.
+- **Workflows:** We utilize `.github/workflows/cline-responder.yml` (and other agentic workflows) to enable autonomous interactions where Cline can be triggered to respond to repository events, effectively acting as an autonomous maintainer.
+
+#### **Requirement:** Best open-source engineering using CodeRabbit.
+- **Implementation:** We have fully integrated **CodeRabbit** for autonomous PR reviews and keeping the codebase clean.
+- **Configuration:** The [`.coderabbit.yaml`](.coderabbit.yaml) file is customized to:
+    - Enable high-level summaries and detailed code review.
+    - Auto-reply to chat interactions (`chat.auto_reply: true`).
+    - Enforce stringent checks (`shellcheck`, `actionlint`, `eslint`, `prettier`).
+- **Workflow:** The system is set up to provide immediate feedback on every Pull Request, ensuring high code quality and documentation standards.
+
 ## � Prerequisites
 
 - Docker & Docker Compose
@@ -44,17 +69,12 @@ ContextKeeper is a local-first AI agent that connects GitHub, Slack, and Documen
 
 ## 🚀 Installation
 
-### 1. Infrastructure Setup (Kestra)
-Start the orchestration layer.
+> **💡 Need help?** See the [Troubleshooting Guide](docs/troubleshooting.md) if you encounter any issues during installation.
 
-```bash
-cd kestra
-docker-compose up -d
-```
-Kestra UI will be available at `http://localhost:8080`.
-
-### 2. Backend Setup
+### 1. Backend Setup
 Configure and start the API server and AI engine.
+
+> **📘 For detailed backend documentation**, including all API endpoints and Python scripts, see [Backend README](backend/README.md).
 
 1. Navigate to the backend directory:
    ```bash
@@ -90,8 +110,10 @@ Configure and start the API server and AI engine.
    ```
    Server runs on `http://localhost:3000`.
 
-### 3. Frontend Setup
+### 2. Frontend Setup
 Launch the user interface.
+
+> **📘 For detailed frontend documentation**, including component architecture and development workflow, see [Frontend README](frontend/README.md).
 
 1. Navigate to the frontend directory:
    ```bash
@@ -109,14 +131,72 @@ Launch the user interface.
    ```
    Access the UI at `http://localhost:5173`.
 
-## ⚡ Quick Start
-
 1. Go to the Frontend URL (`http://localhost:5173`).
 2. Type a question like *"Why did we choose Redis?"*.
 3. The system will query ChromaDB and Hugging Face to provide a context-aware answer.
 4. View the knowledge graph to see relationships between people, modules, and decisions.
 
+
+### 3. Infrastructure Setup (Kestra)
+
+> **📘 For detailed Kestra workflow documentation**, see [Kestra README](kestra/README.md) and [Kestra Developer Guide](docs/kestra-developer-guide.md).
+
+- [Kestra](https://kestra.io) instance (version 0.15.0+)
+- API tokens for:
+  - Slack (Bot Token with appropriate scopes)
+  - HuggingFace (for AI model access)
+  - GitHub (optional, but recommended for higher rate limits)
+  - Notion (optional)
+
+### Installation
+
+1. **Clone or download** this workflow YAML file
+
+2. **Import into Kestra**:
+   ```bash   
+   # via Kestra UI
+   # Navigate to Flows → Create → Import YAML
+   ```
+
+```txt
+# my testing kestra server with docker
+
+docker-compose --env-file .env up -d
+
+#for windows - local kestra server with docker
+
+docker run --pull=always --rm -it -p 8080:8080 --user=root ^
+    -e HUGGINGFACE_API_KEY=hf_your_token_here ^
+    -v "/var/run/docker.sock:/var/run/docker.sock" ^
+    -v "C:/Temp:/tmp" kestra/kestra:latest server local
+```
+
+3. **Configure your tokens** in the execution inputs
+
+### Configuration
+
+#### Required Inputs
+
+| Input | Description | Example |
+|-------|-------------|---------|
+| `slack_token` | Slack Bot Token | `xoxb-your-token` |
+| `huggingface_token` | HuggingFace API Token | `hf_xxxxx` |
+| `github_repo` | Repository to monitor | `owner/repo` |
+| `slack_channels` | Channels to monitor | `general,dev-team` |
+
+#### Optional Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `github_token` | GitHub PAT (increases rate limits) | None |
+| `notion_token` | Notion Integration Token | None |
+| `hours` | Time period for data collection | 24 |
+| `user_query` | Custom analysis query | Auto-generated |
+
+
 ## 📖 Usage
+
+> **📚 For comprehensive usage examples and tutorials**, see [Usage Examples](docs/USAGE_EXAMPLES.md).
 
 ### Collecting Data
 
@@ -139,6 +219,8 @@ curl -X POST http://localhost:3000/api/collect/github \
 
 ## 📡 API Endpoints
 
+> **📖 For complete API documentation**, including all endpoints, request/response formats, and examples, see [API Reference](docs/api.md) and [Backend README](backend/README.md#api-endpoints).
+
 ### Query
 ```bash
 POST /api/query
@@ -159,6 +241,11 @@ GET /api/status?repository=owner/repo
 
 We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get started, our code of conduct, and the process for submitting pull requests.
 
+> **🛠️ Developer Resources:**
+> - [Developer Guide](docs/DEVELOPER_GUIDE.md) - Comprehensive development guide
+> - [Development Setup](docs/development.md) - Development environment setup
+> - [Code of Conduct](CODE_OF_CONDUCT.md) - Community guidelines
+
 ## 📄 License
 
 This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
@@ -166,6 +253,11 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENS
 ## 💬 Support
 
 For support, please refer to [SUPPORT.md](SUPPORT.md) or open an issue in the issue tracker.
+
+> **🆘 Need Help?**
+> - [Troubleshooting Guide](docs/troubleshooting.md) - Common issues and solutions
+> - [Documentation Index](docs/README.md) - Complete documentation
+> - [Usage Examples](docs/USAGE_EXAMPLES.md) - Practical examples
 
 ## 👤 Author
 
