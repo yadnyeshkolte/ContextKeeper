@@ -12,7 +12,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-import requests
+from huggingface_hub import InferenceClient
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -30,12 +30,22 @@ class BaseAgent(ABC):
         """
         self.agent_name = agent_name
         self.huggingface_api_key = os.getenv("HUGGINGFACE_API_KEY")
-        self.huggingface_model = os.getenv("HUGGINGFACE_MODEL", "facebook/bart-large-cnn")
+        # Use chat model instead of summarization model
+        self.huggingface_model = os.getenv("HUGGINGFACE_MODEL", "meta-llama/Llama-3.2-3B-Instruct")
+        # Fallback models if primary fails
+        self.fallback_models = [
+            "meta-llama/Llama-3.2-1B-Instruct",
+            "google/flan-t5-base",
+            "facebook/bart-large-cnn"
+        ]
         self.max_retries = int(os.getenv("AGENT_MAX_RETRIES", "3"))
         self.retry_delay = int(os.getenv("AGENT_RETRY_DELAY", "2"))
         
         if not self.huggingface_api_key:
             print(f"Warning: HUGGINGFACE_API_KEY not found. Summarization will be disabled.", file=sys.stderr)
+        else:
+            # Initialize InferenceClient
+            self.client = InferenceClient(api_key=self.huggingface_api_key)
         
         print(f"Initialized {self.agent_name} agent with model: {self.huggingface_model}", file=sys.stderr)
     
@@ -84,80 +94,71 @@ class BaseAgent(ABC):
         
         # Truncate input if too long (model has token limits)
         max_input_length = 4000  # Conservative limit for most models
+        truncated = False
         if len(text) > max_input_length:
-            text = text[:max_input_length] + "..."
+            text = text[:max_input_length]
+            truncated = True
             print(f"Warning: Input text truncated to {max_input_length} characters", file=sys.stderr)
         
-        for attempt in range(self.max_retries):
-            try:
-                # Use Hugging Face Inference API
-                api_url = f"https://router.huggingface.co/models/{self.huggingface_model}"
-                headers = {"Authorization": f"Bearer {self.huggingface_api_key}"}
-                
-                payload = {
-                    "inputs": text,
-                    "parameters": {
-                        "max_length": max_length,
-                        "temperature": temperature,
-                        "do_sample": True
-                    }
-                }
-                
-                response = requests.post(api_url, headers=headers, json=payload, timeout=30)
-                
-                if response.status_code == 200:
-                    result = response.json()
+        # Try primary model first, then fallbacks
+        models_to_try = [self.huggingface_model] + self.fallback_models
+        
+        for model_name in models_to_try:
+            for attempt in range(self.max_retries):
+                try:
+                    # Use InferenceClient with chat completion
+                    messages = [
+                        {
+                            "role": "system",
+                            "content": "You are a helpful assistant that summarizes text concisely and accurately. Provide a clear, structured summary that captures the key points."
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Please summarize the following text in about {max_length} characters:\n\n{text}"
+                        }
+                    ]
                     
-                    # Handle different response formats
-                    if isinstance(result, list) and len(result) > 0:
-                        summary_text = result[0].get("summary_text", result[0].get("generated_text", ""))
-                    elif isinstance(result, dict):
-                        summary_text = result.get("summary_text", result.get("generated_text", ""))
-                    else:
-                        summary_text = str(result)
+                    response = self.client.chat_completion(
+                        messages=messages,
+                        model=model_name,
+                        max_tokens=max_length,
+                        temperature=temperature
+                    )
+                    
+                    # Extract the response text
+                    summary_text = response.choices[0].message.content
                     
                     return {
                         "summary": summary_text,
-                        "model": self.huggingface_model,
+                        "model": model_name,
                         "success": True,
+                        "truncated": truncated,
                         "timestamp": datetime.now().isoformat()
                     }
-                elif response.status_code == 503:
-                    # Model is loading
-                    print(f"Model loading, waiting... (attempt {attempt + 1}/{self.max_retries})", file=sys.stderr)
-                    time.sleep(20)  # Wait longer for model to load
-                    continue
-                else:
-                    error_msg = response.json().get("error", response.text)
-                    print(f"Hugging Face API error: {error_msg}", file=sys.stderr)
                     
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"Hugging Face API error with model {model_name} (attempt {attempt + 1}/{self.max_retries}): {error_msg}", file=sys.stderr)
+                    
+                    # If it's a model loading error, wait longer
+                    if "loading" in error_msg.lower():
+                        print(f"Model {model_name} is loading, waiting...", file=sys.stderr)
+                        time.sleep(20)
+                        continue
+                    
+                    # If this was the last retry for this model, try next model
                     if attempt < self.max_retries - 1:
                         time.sleep(self.retry_delay * (2 ** attempt))
                         continue
-                    
-                    return {
-                        "summary": text[:max_length] + "..." if len(text) > max_length else text,
-                        "error": error_msg,
-                        "model": self.huggingface_model,
-                        "success": False,
-                        "fallback": True
-                    }
-                    
-            except requests.exceptions.Timeout:
-                print(f"Request timeout (attempt {attempt + 1}/{self.max_retries})", file=sys.stderr)
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay * (2 ** attempt))
-                    continue
-            except Exception as e:
-                print(f"Error during summarization: {e}", file=sys.stderr)
-                if attempt < self.max_retries - 1:
-                    time.sleep(self.retry_delay * (2 ** attempt))
-                    continue
+                    else:
+                        # Move to next model
+                        print(f"Failed to use model {model_name}, trying next fallback...", file=sys.stderr)
+                        break
         
-        # Fallback: return truncated text
+        # Fallback: return truncated text if all models failed
         return {
             "summary": text[:max_length] + "..." if len(text) > max_length else text,
-            "error": "Max retries exceeded",
+            "error": "All models failed",
             "model": self.huggingface_model,
             "success": False,
             "fallback": True
