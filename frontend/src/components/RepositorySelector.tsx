@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Form, Button, InputGroup } from 'react-bootstrap';
 
 interface RepositorySelectorProps {
     repository: string;
@@ -12,7 +11,6 @@ const RepositorySelector = ({ repository, onRepositoryChange }: RepositorySelect
     const [error, setError] = useState<string | null>(null);
 
     const validateRepository = (repo: string): boolean => {
-        // Validate format: owner/repo
         const repoPattern = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/;
         return repoPattern.test(repo);
     };
@@ -40,46 +38,53 @@ const RepositorySelector = ({ repository, onRepositoryChange }: RepositorySelect
     };
 
     return (
-        <div className="mb-3">
-            <Form.Label>📦 Repository:</Form.Label>
+        <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                📦 Repository:
+            </label>
             {!isEditing ? (
-                <InputGroup>
-                    <Form.Control
+                <div className="flex gap-2">
+                    <input
                         type="text"
                         value={repository}
                         readOnly
                         disabled
+                        className="input-field flex-1 bg-gray-100 dark:bg-slate-700 cursor-not-allowed"
                     />
-                    <Button
-                        variant="outline-secondary"
+                    <button
                         onClick={() => setIsEditing(true)}
+                        className="btn-secondary flex items-center gap-2"
                         title="Change repository"
                     >
                         ✏️ Edit
-                    </Button>
-                </InputGroup>
+                    </button>
+                </div>
             ) : (
-                <InputGroup>
-                    <Form.Control
-                        type="text"
-                        value={tempRepo}
-                        onChange={(e) => setTempRepo(e.target.value)}
-                        placeholder="owner/repository"
-                        autoFocus
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSave();
-                            if (e.key === 'Escape') handleCancel();
-                        }}
-                        isInvalid={!!error}
-                    />
-                    <Button variant="success" onClick={handleSave}>✓</Button>
-                    <Button variant="danger" onClick={handleCancel}>✗</Button>
+                <div className="space-y-2">
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={tempRepo}
+                            onChange={(e) => setTempRepo(e.target.value)}
+                            placeholder="owner/repository"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSave();
+                                if (e.key === 'Escape') handleCancel();
+                            }}
+                            className={`input-field flex-1 ${error ? 'border-rose-500 focus:ring-rose-500/50' : ''}`}
+                        />
+                        <button onClick={handleSave} className="btn-success">
+                            ✓
+                        </button>
+                        <button onClick={handleCancel} className="btn-danger">
+                            ✗
+                        </button>
+                    </div>
                     {error && (
-                        <Form.Control.Feedback type="invalid">
-                            {error}
-                        </Form.Control.Feedback>
+                        <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>
                     )}
-                </InputGroup>
+                </div>
             )}
         </div>
     );

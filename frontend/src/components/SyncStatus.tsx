@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Card, Button, Badge, Alert, Spinner, Row, Col } from 'react-bootstrap';
 import BranchSelector from './BranchSelector';
 
 interface SyncStatusData {
@@ -73,7 +72,6 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
             if (data.success) {
                 setLastSync(data.timestamp || new Date().toISOString());
                 setSuccessMessage(`Synced ${data.total_items || 0} items from ${branch}`);
-                // Refresh status after sync
                 setTimeout(() => fetchStatus(false), 1000);
             } else {
                 setError(data.error || 'Sync failed');
@@ -101,7 +99,6 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
             if (data.success) {
                 setLastSync(data.timestamp || new Date().toISOString());
                 setSuccessMessage(`Synced ${data.synced_count || 0} of ${data.total_branches || 0} branches`);
-                // Refresh status after sync
                 setTimeout(() => fetchStatus(false), 1000);
             } else {
                 setError(data.error || 'Repository sync failed');
@@ -116,128 +113,152 @@ const SyncStatus = ({ repository, branch, onBranchChange }: SyncStatusProps) => 
 
     useEffect(() => {
         fetchStatus(true);
-        // Refresh status every 30 seconds
         const interval = setInterval(() => fetchStatus(false), 30000);
         return () => clearInterval(interval);
     }, [branch, repository]);
 
     return (
-        <Card className="mb-4">
-            <Card.Body>
-                <BranchSelector
-                    repository={repository}
-                    selectedBranch={branch}
-                    onBranchChange={onBranchChange}
-                />
+        <div className="glass-card p-6 mb-6 animate-fade-in">
+            <BranchSelector
+                repository={repository}
+                selectedBranch={branch}
+                onBranchChange={onBranchChange}
+            />
 
-                <div className="d-flex justify-content-between align-items-center mt-3 mb-3">
-                    <h5 className="mb-0">📊 System Status</h5>
-                    <div>
-                        <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={triggerSyncData}
-                            disabled={syncingData || syncingRepo}
-                            className="me-2"
-                        >
-                            {syncingData ? (
-                                <>
-                                    <Spinner animation="border" size="sm" className="me-1" />
-                                    Syncing {branch}...
-                                </>
-                            ) : (
-                                `🔄 Sync Data (${branch})`
-                            )}
-                        </Button>
-                        <Button
-                            variant="success"
-                            size="sm"
-                            onClick={triggerSyncRepo}
-                            disabled={syncingData || syncingRepo}
-                        >
-                            {syncingRepo ? (
-                                <>
-                                    <Spinner animation="border" size="sm" className="me-1" />
-                                    Syncing All Branches...
-                                </>
-                            ) : (
-                                '🔄 Sync Repo (All Branches)'
-                            )}
-                        </Button>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-4 mb-4">
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                    📊 System Status
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={triggerSyncData}
+                        disabled={syncingData || syncingRepo}
+                        className="btn-primary text-sm flex items-center gap-2"
+                    >
+                        {syncingData ? (
+                            <>
+                                <span className="spinner"></span>
+                                Syncing {branch}...
+                            </>
+                        ) : (
+                            `🔄 Sync Data (${branch})`
+                        )}
+                    </button>
+                    <button
+                        onClick={triggerSyncRepo}
+                        disabled={syncingData || syncingRepo}
+                        className="btn-success text-sm flex items-center gap-2"
+                    >
+                        {syncingRepo ? (
+                            <>
+                                <span className="spinner"></span>
+                                Syncing All...
+                            </>
+                        ) : (
+                            '🔄 Sync Repo (All Branches)'
+                        )}
+                    </button>
+                </div>
+            </div>
+
+            {/* Alerts */}
+            {isFetchingStatus && (
+                <div className="alert-info mb-4">
+                    <span className="spinner"></span>
+                    <span>Fetching from local ChromaDB...</span>
+                </div>
+            )}
+
+            {error && (
+                <div className="alert-danger mb-4 flex justify-between items-start">
+                    <span>⚠️ {error}</span>
+                    <button
+                        onClick={() => setError(null)}
+                        className="text-rose-700 dark:text-rose-300 hover:text-rose-900 font-bold"
+                    >
+                        ×
+                    </button>
+                </div>
+            )}
+
+            {successMessage && (
+                <div className="alert-success mb-4 flex justify-between items-start">
+                    <span>✅ {successMessage}</span>
+                    <button
+                        onClick={() => setSuccessMessage(null)}
+                        className="text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 font-bold"
+                    >
+                        ×
+                    </button>
+                </div>
+            )}
+
+            {/* Status Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {/* ChromaDB Status */}
+                <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">ChromaDB Documents</div>
+                    <div className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+                        {status?.chromadb?.count || 0}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className={status?.chromadb?.status === 'ok' ? 'status-dot-success' : 'status-dot-danger'}></span>
+                        <span className={`text-sm font-medium ${status?.chromadb?.status === 'ok'
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-rose-600 dark:text-rose-400'
+                            }`}>
+                            {status?.chromadb?.status === 'ok' ? 'Connected' : 'Error'}
+                        </span>
                     </div>
                 </div>
 
-                {isFetchingStatus && (
-                    <Alert variant="info" className="d-flex align-items-center">
-                        <Spinner animation="border" size="sm" className="me-2" />
-                        fetching from local chroma db...
-                    </Alert>
-                )}
-
-                {error && (
-                    <Alert variant="danger" dismissible onClose={() => setError(null)}>
-                        ⚠️ {error}
-                    </Alert>
-                )}
-
-                {successMessage && (
-                    <Alert variant="success" dismissible onClose={() => setSuccessMessage(null)}>
-                        ✅ {successMessage}
-                    </Alert>
-                )}
-
-                <Row className="g-3">
-                    <Col md={4}>
-                        <Card bg="light">
-                            <Card.Body>
-                                <div className="text-muted small">ChromaDB Documents</div>
-                                <h3 className="mb-1">{status?.chromadb?.count || 0}</h3>
-                                <Badge bg={status?.chromadb?.status === 'ok' ? 'success' : 'danger'}>
-                                    {status?.chromadb?.status === 'ok' ? '🟢 Connected' : '🔴 Error'}
-                                </Badge>
-                            </Card.Body>
-                        </Card>
-                    </Col>
-
-                    <Col md={4}>
-                        <Card bg="light">
-                            <Card.Body>
-                                <div className="text-muted small">MongoDB</div>
-                                <h3 className="mb-1">
-                                    {status?.mongodb === 'connected' ? 'Connected' : 'Disconnected'}
-                                </h3>
-                                <Badge bg={status?.mongodb === 'connected' ? 'success' : 'danger'}>
-                                    {status?.mongodb === 'connected' ? '🟢 Active' : '🔴 Inactive'}
-                                </Badge>
-                            </Card.Body>
-                        </Card>
-                    </Col>
-
-                    <Col md={4}>
-                        <Card bg="light">
-                            <Card.Body>
-                                <div className="text-muted small">Last Sync</div>
-                                <h6 className="mb-1">
-                                    {lastSync ? new Date(lastSync).toLocaleString() : 'Never'}
-                                </h6>
-                                <Badge bg={lastSync ? 'success' : 'warning'}>
-                                    {lastSync ? '✅ Synced' : '⏳ Pending'}
-                                </Badge>
-                            </Card.Body>
-                        </Card>
-                    </Col>
-                </Row>
-
-                {(syncingData || syncingRepo) && (
-                    <div className="mt-3 text-center">
-                        <Spinner animation="border" variant="primary" />
-                        <p className="mt-2 text-muted">
-                            {syncingRepo ? 'Fetching and syncing all branches from repository...' : 'Fetching data from GitHub...'}
-                        </p>
+                {/* MongoDB Status */}
+                <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">MongoDB</div>
+                    <div className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+                        {status?.mongodb === 'connected' ? 'Connected' : 'Disconnected'}
                     </div>
-                )}
-            </Card.Body>
-        </Card>
+                    <div className="flex items-center gap-2">
+                        <span className={status?.mongodb === 'connected' ? 'status-dot-success' : 'status-dot-danger'}></span>
+                        <span className={`text-sm font-medium ${status?.mongodb === 'connected'
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-rose-600 dark:text-rose-400'
+                            }`}>
+                            {status?.mongodb === 'connected' ? 'Active' : 'Inactive'}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Last Sync Status */}
+                <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">Last Sync</div>
+                    <div className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+                        {lastSync ? new Date(lastSync).toLocaleString() : 'Never'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className={lastSync ? 'status-dot-success' : 'status-dot-warning'}></span>
+                        <span className={`text-sm font-medium ${lastSync
+                                ? 'text-emerald-600 dark:text-emerald-400'
+                                : 'text-amber-600 dark:text-amber-400'
+                            }`}>
+                            {lastSync ? 'Synced' : 'Pending'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Syncing Indicator */}
+            {(syncingData || syncingRepo) && (
+                <div className="mt-4 text-center py-6">
+                    <div className="spinner-lg text-primary-500"></div>
+                    <p className="mt-3 text-gray-600 dark:text-gray-400">
+                        {syncingRepo
+                            ? 'Fetching and syncing all branches from repository...'
+                            : 'Fetching data from GitHub...'}
+                    </p>
+                </div>
+            )}
+        </div>
     );
 };
 

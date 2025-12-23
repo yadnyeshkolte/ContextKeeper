@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Form, Button, Nav, Badge } from 'react-bootstrap';
 import ReactMarkdown from 'react-markdown';
-import 'bootstrap/dist/css/bootstrap.min.css';
+import './index.css';
 import KnowledgeGraph from './components/KnowledgeGraph';
 import SyncStatus from './components/SyncStatus';
 import RepositorySelector from './components/RepositorySelector';
@@ -38,6 +37,16 @@ function App() {
   const [branch, setBranch] = useState<string>('main');
   const [hasUpdates, setHasUpdates] = useState<boolean>(false);
   const [updateMessage, setUpdateMessage] = useState<string>('');
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+
+  // Toggle dark mode
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
 
   // Fetch default repository from backend config
   useEffect(() => {
@@ -53,7 +62,6 @@ function App() {
         }
       } catch (error) {
         console.error('Failed to fetch config:', error);
-        // Keep default values on error
       }
     };
     fetchConfig();
@@ -77,12 +85,8 @@ function App() {
       }
     };
 
-    // Check immediately on mount
     checkForUpdates();
-
-    // Then check every 5 minutes
     const interval = setInterval(checkForUpdates, 5 * 60 * 1000);
-
     return () => clearInterval(interval);
   }, [repository, branch]);
 
@@ -127,8 +131,14 @@ function App() {
     setHasUpdates(false);
   };
 
+  const tabs = [
+    { id: 'query' as const, label: '🔍 Query', icon: '🔍' },
+    { id: 'graph' as const, label: '🕸️ Knowledge Graph', icon: '🕸️' },
+    { id: 'agents' as const, label: '🤖 AI Agents', icon: '🤖' },
+  ];
+
   return (
-    <div className="min-vh-100 bg-light">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors duration-300">
       {hasUpdates && (
         <NotificationOverlay
           message={updateMessage}
@@ -136,145 +146,192 @@ function App() {
           onDismiss={handleDismissNotification}
         />
       )}
-      <header className="bg-primary text-white py-4 mb-4">
-        <Container>
-          <h1 className="display-4 mb-2">🧠 ContextKeeper</h1>
-          <p className="lead mb-0">AI Memory Layer for Development Teams</p>
-        </Container>
+
+      {/* Header */}
+      <header className="bg-gradient-primary text-white py-8 mb-6 relative overflow-hidden">
+        {/* Animated background elements */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-1/2 -right-1/4 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse-slow"></div>
+          <div className="absolute -bottom-1/2 -left-1/4 w-96 h-96 bg-white/5 rounded-full blur-3xl animate-pulse-slow"></div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 relative z-10">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold mb-2 text-shadow-lg animate-fade-in">
+                🧠 ContextKeeper
+              </h1>
+              <p className="text-lg text-white/90 animate-fade-in-up">
+                AI Memory Layer for Development Teams
+              </p>
+            </div>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-3 rounded-full bg-white/10 hover:bg-white/20 transition-all duration-200 hover:scale-110"
+              aria-label="Toggle dark mode"
+            >
+              {darkMode ? '☀️' : '🌙'}
+            </button>
+          </div>
+        </div>
       </header>
 
-      <Container>
-        <Nav variant="tabs" className="mb-4">
-          <Nav.Item>
-            <Nav.Link active={activeTab === 'query'} onClick={() => setActiveTab('query')}>
-              Query
-            </Nav.Link>
-          </Nav.Item>
-          <Nav.Item>
-            <Nav.Link active={activeTab === 'graph'} onClick={() => setActiveTab('graph')}>
-              Knowledge Graph
-            </Nav.Link>
-          </Nav.Item>
-          <Nav.Item>
-            <Nav.Link active={activeTab === 'agents'} onClick={() => setActiveTab('agents')}>
-              🤖 AI Agents
-            </Nav.Link>
-          </Nav.Item>
-        </Nav>
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 pb-8">
+        {/* Tab Navigation */}
+        <nav className="mb-6 animate-fade-in">
+          <div className="flex gap-2 p-1 bg-white dark:bg-slate-800 rounded-xl shadow-lg">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all duration-200 ${activeTab === tab.id
+                    ? 'bg-gradient-primary text-white shadow-md'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700'
+                  }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </nav>
 
-        <div style={{ display: activeTab === 'query' ? 'block' : 'none' }}>
+        {/* Query Tab */}
+        <div className={`${activeTab === 'query' ? 'block animate-fade-in' : 'hidden'}`}>
           <RepositorySelector repository={repository} onRepositoryChange={setRepository} />
           <SyncStatus repository={repository} branch={branch} onBranchChange={setBranch} />
 
-          <Card className="mb-4">
-            <Card.Body>
-              <Form.Group className="mb-3">
-                <Form.Control
-                  type="text"
-                  size="lg"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Ask: 'Why did we use Redis?'"
-                  onKeyDown={(e) => e.key === 'Enter' && handleQuery()}
-                />
-              </Form.Group>
-              <Button
-                variant="primary"
-                size="lg"
+          {/* Search Card */}
+          <div className="glass-card p-6 mb-6 animate-fade-in-up">
+            <div className="space-y-4">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Ask: 'Why did we use Redis?'"
+                onKeyDown={(e) => e.key === 'Enter' && handleQuery()}
+                className="input-field text-lg"
+              />
+              <button
                 onClick={handleQuery}
                 disabled={loading}
-                className="w-100"
+                className="btn-primary w-full py-4 text-lg flex items-center justify-center gap-2"
               >
-                {loading ? 'Asking AI...' : 'Ask ContextKeeper'}
-              </Button>
-            </Card.Body>
-          </Card>
-
-          {result && (
-            <>
-              <Card className="mb-4">
-                <Card.Header as="h5">Answer</Card.Header>
-                <Card.Body>
-                  <ReactMarkdown>{result.answer}</ReactMarkdown>
-                </Card.Body>
-              </Card>
-
-              <Row className="g-3">
-                <Col md={6}>
-                  <Card>
-                    <Card.Header>📚 Sources</Card.Header>
-                    <Card.Body>
-                      {result.sources && result.sources.length > 0 ? (
-                        <ul className="list-unstyled">
-                          {result.sources.map((s, i) => (
-                            <li key={i} className="mb-2">
-                              <a href={s.link} target="_blank" rel="noopener noreferrer">
-                                <Badge bg="secondary" className="me-2">{s.type}</Badge>
-                                {s.title || 'Source'}
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-muted">No specific sources found.</p>
-                      )}
-                    </Card.Body>
-                  </Card>
-                </Col>
-
-                <Col md={6}>
-                  <Card>
-                    <Card.Header>👥 Experts</Card.Header>
-                    <Card.Body>
-                      {result.relatedPeople && result.relatedPeople.length > 0 ? (
-                        <div>
-                          {result.relatedPeople.map(p => (
-                            <Badge key={p} bg="info" className="me-2 mb-2">{p}</Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-muted">No experts identified</p>
-                      )}
-                    </Card.Body>
-                  </Card>
-                </Col>
-
-                {result.timeline && result.timeline.length > 0 && (
-                  <Col md={12}>
-                    <Card>
-                      <Card.Header>📅 Timeline</Card.Header>
-                      <Card.Body>
-                        <div className="timeline">
-                          {result.timeline.map((event, i) => (
-                            <div key={i} className="d-flex mb-3">
-                              <div className="me-3 text-muted" style={{ minWidth: '120px' }}>
-                                {new Date(event.date).toLocaleDateString()}
-                              </div>
-                              <div>
-                                <a href={event.url} target="_blank" rel="noopener noreferrer">
-                                  {event.event}
-                                </a>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </Card.Body>
-                    </Card>
-                  </Col>
+                {loading ? (
+                  <>
+                    <span className="spinner"></span>
+                    Asking AI...
+                  </>
+                ) : (
+                  '🚀 Ask ContextKeeper'
                 )}
-              </Row>
-            </>
+              </button>
+            </div>
+          </div>
+
+          {/* Results */}
+          {result && (
+            <div className="space-y-6 animate-fade-in-up">
+              {/* Answer Card */}
+              <div className="glass-card overflow-hidden">
+                <div className="card-header-gradient">
+                  <h3 className="text-xl font-semibold">💡 Answer</h3>
+                </div>
+                <div className="p-6 prose prose-indigo dark:prose-invert max-w-none">
+                  <ReactMarkdown>{result.answer}</ReactMarkdown>
+                </div>
+              </div>
+
+              {/* Sources and Experts Grid */}
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Sources */}
+                <div className="glass-card overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">📚 Sources</h3>
+                  </div>
+                  <div className="p-6">
+                    {result.sources && result.sources.length > 0 ? (
+                      <ul className="space-y-3">
+                        {result.sources.map((s, i) => (
+                          <li key={i}>
+                            <a
+                              href={s.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                            >
+                              <span className="badge-secondary text-xs uppercase">{s.type}</span>
+                              <span className="hover:underline">{s.title || 'Source'}</span>
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-gray-500 dark:text-gray-400">No specific sources found.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Experts */}
+                <div className="glass-card overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">👥 Experts</h3>
+                  </div>
+                  <div className="p-6">
+                    {result.relatedPeople && result.relatedPeople.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {result.relatedPeople.map(p => (
+                          <span key={p} className="badge-info">{p}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 dark:text-gray-400">No experts identified</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline */}
+              {result.timeline && result.timeline.length > 0 && (
+                <div className="glass-card overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100">📅 Timeline</h3>
+                  </div>
+                  <div className="p-6">
+                    <div className="space-y-3">
+                      {result.timeline.map((event, i) => (
+                        <div key={i} className="timeline-item">
+                          <div className="text-sm font-medium text-primary-600 dark:text-primary-400 min-w-[100px]">
+                            {new Date(event.date).toLocaleDateString()}
+                          </div>
+                          <a
+                            href={event.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                          >
+                            {event.event}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        <div style={{ display: activeTab === 'graph' ? 'block' : 'none' }}>
+        {/* Knowledge Graph Tab */}
+        <div className={`${activeTab === 'graph' ? 'block animate-fade-in' : 'hidden'}`}>
           <KnowledgeGraph repository={repository} branch={branch} />
         </div>
 
-        <div style={{ display: activeTab === 'agents' ? 'block' : 'none' }}>
+        {/* AI Agents Tab */}
+        <div className={`${activeTab === 'agents' ? 'block animate-fade-in' : 'hidden'}`}>
           <AIAgents repository={repository} branch={branch} />
         </div>
-      </Container>
+      </main>
     </div>
   );
 }

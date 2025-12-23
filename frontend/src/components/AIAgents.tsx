@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Container, Nav, Tab, Button, Alert } from 'react-bootstrap';
 import AgentRunner from './AgentRunner';
 import DecisionPanel from './DecisionPanel';
 
@@ -9,6 +8,7 @@ interface AIAgentsProps {
 }
 
 export default function AIAgents({ repository, branch }: AIAgentsProps) {
+    const [activeTab, setActiveTab] = useState('github');
     const [summarizerJobId, setSummarizerJobId] = useState<string | null>(null);
     const [decisionJobId, setDecisionJobId] = useState<string | null>(null);
     const [decisionResult, setDecisionResult] = useState<any>(null);
@@ -39,7 +39,6 @@ export default function AIAgents({ repository, branch }: AIAgentsProps) {
 
             setDecisionJobId(data.jobId);
 
-            // Poll for completion
             const pollInterval = setInterval(async () => {
                 try {
                     const statusRes = await fetch(`http://localhost:3000/api/agents/status/${data.jobId}`);
@@ -64,63 +63,77 @@ export default function AIAgents({ repository, branch }: AIAgentsProps) {
         }
     };
 
+    const tabs = [
+        { id: 'github', label: 'GitHub Agent', icon: '🐙' },
+        { id: 'slack', label: 'Slack Agent', icon: '💬' },
+        { id: 'notion', label: 'Notion Agent', icon: '📝' },
+        { id: 'summarize', label: '🌟 Unified Summarizer', icon: '🌟' },
+        { id: 'decisions', label: '📊 Decision Engine', icon: '📊' },
+    ];
+
     return (
-        <Container>
-            <div className="mb-4">
-                <h2>🤖 AI Agents Dashboard</h2>
-                <p className="text-muted">
+        <div className="animate-fade-in">
+            <div className="mb-6">
+                <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+                    🤖 AI Agents Dashboard
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
                     Run individual agents or the unified AI summarizer to analyze your project data.
                 </p>
             </div>
 
-            <Tab.Container defaultActiveKey="github">
-                <Nav variant="tabs" className="mb-4">
-                    <Nav.Item>
-                        <Nav.Link eventKey="github">GitHub Agent</Nav.Link>
-                    </Nav.Item>
-                    <Nav.Item>
-                        <Nav.Link eventKey="slack">Slack Agent</Nav.Link>
-                    </Nav.Item>
-                    <Nav.Item>
-                        <Nav.Link eventKey="notion">Notion Agent</Nav.Link>
-                    </Nav.Item>
-                    <Nav.Item>
-                        <Nav.Link eventKey="summarize">🌟 Unified Summarizer</Nav.Link>
-                    </Nav.Item>
-                    <Nav.Item>
-                        <Nav.Link eventKey="decisions">📊 Decision Engine</Nav.Link>
-                    </Nav.Item>
-                </Nav>
+            {/* Tab Navigation */}
+            <div className="glass-card p-2 mb-6">
+                <div className="flex flex-wrap gap-1">
+                    {tabs.map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === tab.id
+                                    ? 'bg-gradient-primary text-white shadow-md'
+                                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700'
+                                }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
 
-                <Tab.Content>
-                    <Tab.Pane eventKey="github">
-                        <AgentRunner
-                            agentType="github"
-                            agentName="GitHub Agent"
-                            repository={repository}
-                            branch={branch}
-                        />
-                    </Tab.Pane>
+            {/* Tab Content */}
+            <div className="animate-fade-in-up">
+                {activeTab === 'github' && (
+                    <AgentRunner
+                        agentType="github"
+                        agentName="GitHub Agent"
+                        repository={repository}
+                        branch={branch}
+                    />
+                )}
 
-                    <Tab.Pane eventKey="slack">
-                        <AgentRunner
-                            agentType="slack"
-                            agentName="Slack Agent"
-                            repository={repository}
-                        />
-                    </Tab.Pane>
+                {activeTab === 'slack' && (
+                    <AgentRunner
+                        agentType="slack"
+                        agentName="Slack Agent"
+                        repository={repository}
+                    />
+                )}
 
-                    <Tab.Pane eventKey="notion">
-                        <AgentRunner
-                            agentType="notion"
-                            agentName="Notion Agent"
-                        />
-                    </Tab.Pane>
+                {activeTab === 'notion' && (
+                    <AgentRunner
+                        agentType="notion"
+                        agentName="Notion Agent"
+                    />
+                )}
 
-                    <Tab.Pane eventKey="summarize">
-                        <Alert variant="info" className="mb-4">
-                            <strong>Unified AI Summarizer</strong> runs all three agents (GitHub, Slack, Notion) and generates a comprehensive summary using Hugging Face AI models.
-                        </Alert>
+                {activeTab === 'summarize' && (
+                    <>
+                        <div className="alert-info mb-4">
+                            <span className="text-lg">ℹ️</span>
+                            <div>
+                                <strong>Unified AI Summarizer</strong> runs all three agents (GitHub, Slack, Notion) and generates a comprehensive summary using Hugging Face AI models.
+                            </div>
+                        </div>
                         <AgentRunner
                             agentType="summarize"
                             agentName="AI Summarizer (All Agents)"
@@ -129,54 +142,59 @@ export default function AIAgents({ repository, branch }: AIAgentsProps) {
                             onJobComplete={(jobId) => setSummarizerJobId(jobId)}
                         />
                         {summarizerJobId && (
-                            <Alert variant="success" className="mt-3">
-                                ✓ Summarizer completed successfully! Job ID: <code>{summarizerJobId}</code>
-                                <br />
-                                <Button variant="primary" size="sm" className="mt-2" onClick={runDecisionEngine}>
+                            <div className="alert-success mt-4">
+                                <span className="text-lg">✓</span>
+                                <div className="flex-1">
+                                    <span>Summarizer completed successfully! Job ID: </span>
+                                    <code className="bg-emerald-200 dark:bg-emerald-800 px-2 py-0.5 rounded">{summarizerJobId}</code>
+                                </div>
+                                <button onClick={runDecisionEngine} className="btn-primary text-sm">
                                     Run Decision Engine →
-                                </Button>
-                            </Alert>
+                                </button>
+                            </div>
                         )}
-                    </Tab.Pane>
+                    </>
+                )}
 
-                    <Tab.Pane eventKey="decisions">
-                        <Alert variant="info" className="mb-4">
-                            <strong>Decision Engine</strong> analyzes the unified summary and provides intelligent recommendations with confidence scores.
-                        </Alert>
+                {activeTab === 'decisions' && (
+                    <>
+                        <div className="alert-info mb-4">
+                            <span className="text-lg">ℹ️</span>
+                            <div>
+                                <strong>Decision Engine</strong> analyzes the unified summary and provides intelligent recommendations with confidence scores.
+                            </div>
+                        </div>
 
                         {!summarizerJobId && (
-                            <Alert variant="warning">
-                                Please run the <strong>Unified Summarizer</strong> first before using the Decision Engine.
-                            </Alert>
+                            <div className="alert-warning mb-4">
+                                <span className="text-lg">⚠️</span>
+                                <span>Please run the <strong>Unified Summarizer</strong> first before using the Decision Engine.</span>
+                            </div>
                         )}
 
                         {summarizerJobId && !isLoadingDecision && !decisionResult && (
-                            <Button variant="primary" onClick={runDecisionEngine}>
+                            <button onClick={runDecisionEngine} className="btn-primary">
                                 Run Decision Engine
-                            </Button>
+                            </button>
                         )}
 
                         {isLoadingDecision && (
-                            <Alert variant="info">
-                                <div className="d-flex align-items-center">
-                                    <div className="spinner-border spinner-border-sm me-2" role="status">
-                                        <span className="visually-hidden">Loading...</span>
-                                    </div>
-                                    Running decision engine analysis... (Job ID: {decisionJobId})
-                                </div>
-                            </Alert>
+                            <div className="alert-info flex items-center gap-3">
+                                <span className="spinner"></span>
+                                <span>Running decision engine analysis... (Job ID: {decisionJobId})</span>
+                            </div>
                         )}
 
                         {decisionError && (
-                            <Alert variant="danger">
+                            <div className="alert-danger">
                                 <strong>Error:</strong> {decisionError}
-                            </Alert>
+                            </div>
                         )}
 
                         {decisionResult && <DecisionPanel decisions={decisionResult} />}
-                    </Tab.Pane>
-                </Tab.Content>
-            </Tab.Container>
-        </Container>
+                    </>
+                )}
+            </div>
+        </div>
     );
 }

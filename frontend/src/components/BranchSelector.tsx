@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Form } from 'react-bootstrap';
 
 interface Branch {
     name: string;
@@ -41,7 +40,6 @@ const BranchSelector: React.FC<BranchSelectorProps> = ({ repository, selectedBra
             setBranches(data.branches || []);
             setFromCache(data.from_cache || false);
 
-            // If no branch is selected and we have branches, select the first one (usually main/master)
             if (!selectedBranch && data.branches && data.branches.length > 0) {
                 onBranchChange(data.branches[0].name);
             }
@@ -55,25 +53,31 @@ const BranchSelector: React.FC<BranchSelectorProps> = ({ repository, selectedBra
 
     return (
         <div className="mb-3">
-            <Form.Label>
-                📌 Branch: {fromCache && <small className="text-muted">(from cache)</small>}
-            </Form.Label>
-            <Form.Select
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                📌 Branch:
+                {fromCache && (
+                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">(from cache)</span>
+                )}
+            </label>
+            <select
                 value={selectedBranch}
                 onChange={(e) => onBranchChange(e.target.value)}
                 disabled={loading || branches.length === 0}
+                className="select-field"
             >
                 {loading && <option>Loading branches...</option>}
                 {!loading && branches.length === 0 && <option>No branches available</option>}
                 {!loading && branches.map((branch) => (
                     <option key={branch.name} value={branch.name}>
                         {branch.name}
-                        {branch.synced && ` ✓ (${branch.doc_count || 0} docs)`}
-                        {branch.cached && ' (cached)'}
+                        {branch.synced ? ` ✓ (${branch.doc_count || 0} docs)` : ''}
+                        {!branch.synced && branch.cached ? ' (cached)' : ''}
                     </option>
                 ))}
-            </Form.Select>
-            {error && <Form.Text className="text-danger">⚠️ {error}</Form.Text>}
+            </select>
+            {error && (
+                <p className="mt-1 text-sm text-rose-600 dark:text-rose-400">⚠️ {error}</p>
+            )}
         </div>
     );
 };
