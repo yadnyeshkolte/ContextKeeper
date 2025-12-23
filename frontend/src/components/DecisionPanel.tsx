@@ -1,5 +1,3 @@
-import { Card, Alert, Badge, ProgressBar, Row, Col } from 'react-bootstrap';
-
 interface DecisionPanelProps {
     decisions: any;
 }
@@ -7,11 +5,14 @@ interface DecisionPanelProps {
 export default function DecisionPanel({ decisions }: DecisionPanelProps) {
     if (!decisions || !decisions.success) {
         return (
-            <Alert variant="warning" className="shadow-sm">
-                <strong>⚠️ Decision Engine Unavailable</strong>
-                <br />
-                Decision engine data not available or failed to execute.
-            </Alert>
+            <div className="alert-warning">
+                <span className="text-lg">⚠️</span>
+                <div>
+                    <strong>Decision Engine Unavailable</strong>
+                    <br />
+                    Decision engine data not available or failed to execute.
+                </div>
+            </div>
         );
     }
 
@@ -19,188 +20,162 @@ export default function DecisionPanel({ decisions }: DecisionPanelProps) {
 
     const getUrgencyColor = (level: string) => {
         switch (level) {
-            case 'critical': return 'danger';
-            case 'high': return 'warning';
-            case 'medium': return 'info';
-            default: return 'secondary';
+            case 'critical': return 'rose';
+            case 'high': return 'amber';
+            case 'medium': return 'blue';
+            default: return 'gray';
         }
     };
 
-    const getPriorityVariant = (priority: string) => {
-        switch (priority) {
-            case 'critical': return 'danger';
-            case 'high': return 'warning';
-            case 'medium': return 'info';
-            default: return 'secondary';
+    const getUrgencyBadgeClass = (level: string) => {
+        switch (level) {
+            case 'critical': return 'bg-rose-500';
+            case 'high': return 'bg-amber-500';
+            case 'medium': return 'bg-blue-500';
+            default: return 'bg-gray-500';
         }
     };
+
+    const getPriorityBadgeClass = (priority: string) => {
+        switch (priority) {
+            case 'critical': return 'badge-danger';
+            case 'high': return 'badge-warning';
+            case 'medium': return 'badge-info';
+            default: return 'badge-secondary';
+        }
+    };
+
+    const urgencyColor = getUrgencyColor(urgency_analysis.urgency_level);
 
     return (
-        <div>
+        <div className="space-y-6 animate-fade-in">
             {/* Urgency Analysis */}
-            <Card className="mb-4 shadow-sm border-0">
-                <Card.Header style={{
-                    background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                    color: 'white',
-                    padding: '1.5rem'
-                }}>
-                    <h4 className="mb-0">⚡ Urgency Analysis</h4>
-                </Card.Header>
-                <Card.Body className="p-4">
-                    <Row className="mb-4">
-                        <Col md={6}>
-                            <Card className="border-0 bg-light h-100">
-                                <Card.Body>
-                                    <div className="text-center mb-3">
-                                        <h6 className="text-muted mb-3">Urgency Level</h6>
-                                        <Badge
-                                            bg={getUrgencyColor(urgency_analysis.urgency_level)}
-                                            className="px-4 py-3 fs-5">
-                                            {urgency_analysis.urgency_level.toUpperCase()}
-                                        </Badge>
-                                    </div>
-                                    <ProgressBar
-                                        now={urgency_analysis.urgency_score * 100}
-                                        label={`${(urgency_analysis.urgency_score * 100).toFixed(0)}%`}
-                                        variant={getUrgencyColor(urgency_analysis.urgency_level)}
-                                        style={{ height: '30px', fontSize: '1rem' }}
-                                    />
-                                </Card.Body>
-                            </Card>
-                        </Col>
-                        <Col md={6}>
-                            <Card className="border-0 bg-light h-100">
-                                <Card.Body className="d-flex flex-column justify-content-center align-items-center">
-                                    <h1 className="display-3 mb-2 fw-bold text-{getUrgencyColor(urgency_analysis.urgency_level)}">
-                                        {urgency_analysis.urgent_items_count}
-                                    </h1>
-                                    <p className="text-muted mb-0 fs-5">Urgent Items Detected</p>
-                                </Card.Body>
-                            </Card>
-                        </Col>
-                    </Row>
+            <div className="glass-card overflow-hidden">
+                <div className="bg-gradient-accent text-white p-4 sm:p-6">
+                    <h3 className="text-xl font-semibold">⚡ Urgency Analysis</h3>
+                </div>
+                <div className="p-6">
+                    <div className="grid md:grid-cols-2 gap-6 mb-6">
+                        {/* Urgency Level */}
+                        <div className="bg-gray-50 dark:bg-slate-700/50 rounded-xl p-6 text-center">
+                            <h4 className="text-sm text-gray-500 dark:text-gray-400 mb-3">Urgency Level</h4>
+                            <span className={`inline-block px-6 py-3 text-lg font-bold text-white rounded-lg ${getUrgencyBadgeClass(urgency_analysis.urgency_level)}`}>
+                                {urgency_analysis.urgency_level.toUpperCase()}
+                            </span>
+                            <div className="mt-4">
+                                <div className="progress-bar h-4">
+                                    <div
+                                        className={`progress-bar-fill ${getUrgencyBadgeClass(urgency_analysis.urgency_level)}`}
+                                        style={{ width: `${urgency_analysis.urgency_score * 100}%` }}
+                                    ></div>
+                                </div>
+                                <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                                    {(urgency_analysis.urgency_score * 100).toFixed(0)}% Urgency Score
+                                </p>
+                            </div>
+                        </div>
 
-                    <Alert
-                        variant={getUrgencyColor(urgency_analysis.urgency_level)}
-                        className="mb-0 border-0 shadow-sm"
-                        style={{ fontSize: '1.05rem', lineHeight: '1.7' }}
-                    >
-                        <strong>💡 Recommendation:</strong> {urgency_analysis.recommendation}
-                    </Alert>
-                </Card.Body>
-            </Card>
+                        {/* Urgent Items Count */}
+                        <div className="bg-gray-50 dark:bg-slate-700/50 rounded-xl p-6 flex flex-col items-center justify-center">
+                            <span className={`text-6xl font-bold text-${urgencyColor}-500`}>
+                                {urgency_analysis.urgent_items_count}
+                            </span>
+                            <p className="text-gray-600 dark:text-gray-400 text-lg mt-2">Urgent Items Detected</p>
+                        </div>
+                    </div>
+
+                    <div className={`alert-${urgencyColor === 'rose' ? 'danger' : urgencyColor === 'amber' ? 'warning' : 'info'}`}>
+                        <span className="text-lg">💡</span>
+                        <div>
+                            <strong>Recommendation:</strong> {urgency_analysis.recommendation}
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             {/* High Confidence Recommendations */}
             {high_confidence_recommendations && high_confidence_recommendations.length > 0 && (
-                <Card className="mb-4 shadow-sm border-0">
-                    <Card.Header style={{
-                        background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-                        color: 'white',
-                        padding: '1.5rem'
-                    }}>
-                        <div className="d-flex justify-content-between align-items-center">
-                            <h4 className="mb-0">🎯 Recommended Actions</h4>
-                            <Badge bg="light" text="dark" className="px-3 py-2 fs-6">
-                                {high_confidence_recommendations.length} High Confidence
-                            </Badge>
-                        </div>
-                    </Card.Header>
-                    <Card.Body className="p-4">
+                <div className="glass-card overflow-hidden">
+                    <div className="bg-gradient-secondary text-white p-4 sm:p-6 flex justify-between items-center">
+                        <h3 className="text-xl font-semibold">🎯 Recommended Actions</h3>
+                        <span className="px-3 py-1 bg-white/20 rounded-full text-sm">
+                            {high_confidence_recommendations.length} High Confidence
+                        </span>
+                    </div>
+                    <div className="p-6 space-y-4">
                         {high_confidence_recommendations.map((rec: any, idx: number) => (
-                            <Card key={idx} className="mb-3 border-0 shadow-sm">
-                                <Card.Body className="p-4">
-                                    <div className="d-flex justify-content-between align-items-start mb-3">
-                                        <h5 className="mb-0">{rec.title}</h5>
-                                        <div className="d-flex gap-2">
-                                            <Badge bg={getPriorityVariant(rec.priority)} className="px-3 py-2">
-                                                {rec.priority.toUpperCase()}
-                                            </Badge>
-                                            <Badge bg="success" className="px-3 py-2">
-                                                {(rec.confidence * 100).toFixed(0)}% Confidence
-                                            </Badge>
-                                        </div>
+                            <div key={idx} className="glass-card-solid p-4 sm:p-6">
+                                <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
+                                    <h4 className="font-semibold text-gray-800 dark:text-gray-100">{rec.title}</h4>
+                                    <div className="flex gap-2">
+                                        <span className={getPriorityBadgeClass(rec.priority)}>
+                                            {rec.priority.toUpperCase()}
+                                        </span>
+                                        <span className="badge-success">
+                                            {(rec.confidence * 100).toFixed(0)}% Confidence
+                                        </span>
                                     </div>
-                                    <p className="text-muted mb-3" style={{ fontSize: '1rem', lineHeight: '1.6' }}>
-                                        {rec.description}
-                                    </p>
-                                    {rec.action_items && rec.action_items.length > 0 && (
-                                        <Card className="bg-light border-0">
-                                            <Card.Body>
-                                                <h6 className="mb-3">✅ Action Items:</h6>
-                                                <ul className="mb-0" style={{ fontSize: '0.95rem' }}>
-                                                    {rec.action_items.map((action: string, i: number) => (
-                                                        <li key={i} className="mb-2">{action}</li>
-                                                    ))}
-                                                </ul>
-                                            </Card.Body>
-                                        </Card>
-                                    )}
-                                </Card.Body>
-                            </Card>
+                                </div>
+                                <p className="text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">
+                                    {rec.description}
+                                </p>
+                                {rec.action_items && rec.action_items.length > 0 && (
+                                    <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4">
+                                        <h5 className="font-medium text-gray-800 dark:text-gray-200 mb-3">✅ Action Items:</h5>
+                                        <ul className="space-y-2">
+                                            {rec.action_items.map((action: string, i: number) => (
+                                                <li key={i} className="flex items-start gap-2 text-gray-700 dark:text-gray-300">
+                                                    <span className="text-emerald-500 mt-1">•</span>
+                                                    <span>{action}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
                         ))}
-                    </Card.Body>
-                </Card>
+                    </div>
+                </div>
             )}
 
             {/* Patterns */}
             {patterns && (
-                <Row>
+                <div className="grid md:grid-cols-2 gap-6">
                     {/* Active Contributors */}
                     {patterns.active_contributors && patterns.active_contributors.length > 0 && (
-                        <Col md={6}>
-                            <Card className="mb-4 shadow-sm border-0">
-                                <Card.Header style={{
-                                    background: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
-                                    padding: '1rem'
-                                }}>
-                                    <h5 className="mb-0">👥 Top Contributors</h5>
-                                </Card.Header>
-                                <Card.Body className="p-3">
-                                    {patterns.active_contributors.map((contrib: any, idx: number) => (
-                                        <Card key={idx} className="mb-2 border-0 bg-light">
-                                            <Card.Body className="py-2 px-3">
-                                                <div className="d-flex justify-content-between align-items-center">
-                                                    <span className="fw-bold">{contrib.name}</span>
-                                                    <Badge bg="primary" className="px-3 py-2">
-                                                        {contrib.commits} commits
-                                                    </Badge>
-                                                </div>
-                                            </Card.Body>
-                                        </Card>
-                                    ))}
-                                </Card.Body>
-                            </Card>
-                        </Col>
+                        <div className="glass-card overflow-hidden">
+                            <div className="bg-gradient-cool p-4">
+                                <h3 className="text-lg font-semibold text-gray-800">👥 Top Contributors</h3>
+                            </div>
+                            <div className="p-4 space-y-2">
+                                {patterns.active_contributors.map((contrib: any, idx: number) => (
+                                    <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+                                        <span className="font-medium text-gray-800 dark:text-gray-200">{contrib.name}</span>
+                                        <span className="badge-primary">{contrib.commits} commits</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     )}
 
                     {/* Hot Topics */}
                     {patterns.hot_topics && patterns.hot_topics.length > 0 && (
-                        <Col md={6}>
-                            <Card className="mb-4 shadow-sm border-0">
-                                <Card.Header style={{
-                                    background: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
-                                    padding: '1rem'
-                                }}>
-                                    <h5 className="mb-0">🔥 Hot Topics</h5>
-                                </Card.Header>
-                                <Card.Body className="p-3">
-                                    <div className="d-flex flex-wrap gap-2">
-                                        {patterns.hot_topics.map((topic: any, idx: number) => (
-                                            <Badge
-                                                key={idx}
-                                                bg="danger"
-                                                className="px-3 py-2"
-                                                style={{ fontSize: '0.9rem' }}
-                                            >
-                                                {topic.topic} ({topic.mentions})
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                </Card.Body>
-                            </Card>
-                        </Col>
+                        <div className="glass-card overflow-hidden">
+                            <div className="bg-gradient-warm p-4">
+                                <h3 className="text-lg font-semibold text-gray-800">🔥 Hot Topics</h3>
+                            </div>
+                            <div className="p-4">
+                                <div className="flex flex-wrap gap-2">
+                                    {patterns.hot_topics.map((topic: any, idx: number) => (
+                                        <span key={idx} className="badge-danger px-3 py-1.5 text-sm">
+                                            {topic.topic} ({topic.mentions})
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
                     )}
-                </Row>
+                </div>
             )}
         </div>
     );
