@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import ForceGraph3D from 'react-force-graph-3d';
 import * as THREE from 'three';
 // @ts-ignore
@@ -37,6 +37,32 @@ interface KnowledgeGraph3DProps {
 
 const KnowledgeGraph3D: React.FC<KnowledgeGraph3DProps> = ({ graphData, onNodeClick }) => {
     const fgRef = useRef<any>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+
+    // Track container dimensions
+    useEffect(() => {
+        const updateDimensions = () => {
+            if (containerRef.current) {
+                const { width, height } = containerRef.current.getBoundingClientRect();
+                setDimensions({ width: width || 800, height: height || 600 });
+            }
+        };
+
+        updateDimensions();
+
+        // Use ResizeObserver for better performance
+        const resizeObserver = new ResizeObserver(updateDimensions);
+        if (containerRef.current) {
+            resizeObserver.observe(containerRef.current);
+        }
+
+        window.addEventListener('resize', updateDimensions);
+        return () => {
+            resizeObserver.disconnect();
+            window.removeEventListener('resize', updateDimensions);
+        };
+    }, []);
 
     useEffect(() => {
         // Camera positioning
@@ -157,29 +183,34 @@ const KnowledgeGraph3D: React.FC<KnowledgeGraph3DProps> = ({ graphData, onNodeCl
     };
 
     return (
-        <ForceGraph3D
-            ref={fgRef}
-            graphData={graphData}
-            nodeLabel={nodeLabel}
-            nodeThreeObject={nodeThreeObject}
-            nodeColor={getNodeColor}
-            linkColor={linkColor}
-            linkWidth={linkWidth}
-            linkOpacity={0.6}
-            linkDirectionalParticles={2}
-            linkDirectionalParticleWidth={2}
-            linkDirectionalParticleSpeed={0.005}
-            onNodeClick={handleNodeClick}
-            enableNodeDrag={true}
-            enableNavigationControls={true}
-            showNavInfo={false}
-            backgroundColor="#fafafa"
-            d3AlphaDecay={0.02}
-            d3VelocityDecay={0.3}
-            warmupTicks={100}
-            cooldownTicks={200}
-        />
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
+            <ForceGraph3D
+                ref={fgRef}
+                width={dimensions.width}
+                height={dimensions.height}
+                graphData={graphData}
+                nodeLabel={nodeLabel}
+                nodeThreeObject={nodeThreeObject}
+                nodeColor={getNodeColor}
+                linkColor={linkColor}
+                linkWidth={linkWidth}
+                linkOpacity={0.6}
+                linkDirectionalParticles={2}
+                linkDirectionalParticleWidth={2}
+                linkDirectionalParticleSpeed={0.005}
+                onNodeClick={handleNodeClick}
+                enableNodeDrag={true}
+                enableNavigationControls={true}
+                showNavInfo={false}
+                backgroundColor="#fafafa"
+                d3AlphaDecay={0.02}
+                d3VelocityDecay={0.3}
+                warmupTicks={100}
+                cooldownTicks={200}
+            />
+        </div>
     );
 };
 
 export default KnowledgeGraph3D;
+

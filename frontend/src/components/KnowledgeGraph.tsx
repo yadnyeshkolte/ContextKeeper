@@ -188,8 +188,8 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ repository, branch }) =
                                 <button
                                     onClick={() => setViewMode('2d')}
                                     className={`px-4 py-2 text-sm font-medium transition-colors ${viewMode === '2d'
-                                            ? 'bg-white text-primary-600'
-                                            : 'text-white hover:bg-white/20'
+                                        ? 'bg-white text-primary-600'
+                                        : 'text-white hover:bg-white/20'
                                         }`}
                                 >
                                     2D View
@@ -197,8 +197,8 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ repository, branch }) =
                                 <button
                                     onClick={() => setViewMode('3d')}
                                     className={`px-4 py-2 text-sm font-medium transition-colors ${viewMode === '3d'
-                                            ? 'bg-white text-primary-600'
-                                            : 'text-white hover:bg-white/20'
+                                        ? 'bg-white text-primary-600'
+                                        : 'text-white hover:bg-white/20'
                                         }`}
                                 >
                                     3D View
@@ -277,7 +277,7 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({ repository, branch }) =
                             />
                         </div>
                     ) : (
-                        <div style={{ height: '600px' }}>
+                        <div style={{ width: '100%', height: '600px', position: 'relative', overflow: 'hidden' }}>
                             <KnowledgeGraph3D
                                 graphData={filteredData || graphData}
                                 onNodeClick={handleNodeClick}

@@ -70,8 +70,8 @@ const BranchSelector: React.FC<BranchSelectorProps> = ({ repository, selectedBra
                 {!loading && branches.map((branch) => (
                     <option key={branch.name} value={branch.name}>
                         {branch.name}
-                        {branch.synced && ` ✓ (${branch.doc_count || 0} docs)`}
-                        {branch.cached && ' (cached)'}
+                        {branch.synced ? ` ✓ (${branch.doc_count || 0} docs)` : ''}
+                        {!branch.synced && branch.cached ? ' (cached)' : ''}
                     </option>
                 ))}
             </select>

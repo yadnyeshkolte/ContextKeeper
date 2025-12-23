@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface AgentRunnerProps {
     agentType: 'github' | 'slack' | 'notion' | 'summarize';
@@ -87,6 +87,7 @@ export default function AgentRunner({ agentType, agentName, repository, branch, 
         }
     };
 
+
     const getStatusBadgeClass = () => {
         if (!jobStatus) return 'badge-secondary';
         switch (jobStatus.status) {
@@ -95,6 +96,98 @@ export default function AgentRunner({ agentType, agentName, repository, branch, 
             case 'running': return 'badge-primary';
             default: return 'badge-secondary';
         }
+    };
+
+
+    // Helper function to render AI summary in human-readable format
+    const renderAISummary = (summary: any): React.ReactNode => {
+        // If summary is null or undefined
+        if (!summary) {
+            return <p className="text-gray-500">No summary available.</p>;
+        }
+
+        // If summary is a plain string
+        if (typeof summary === 'string') {
+            // Check if it looks like JSON
+            if (summary.trim().startsWith('{') || summary.trim().startsWith('[')) {
+                try {
+                    const parsed = JSON.parse(summary);
+                    return renderAISummary(parsed);
+                } catch {
+                    // Not valid JSON, render as text
+                    return <div className="whitespace-pre-wrap">{summary}</div>;
+                }
+            }
+            return <div className="whitespace-pre-wrap">{summary}</div>;
+        }
+
+        // If summary is an array
+        if (Array.isArray(summary)) {
+            return (
+                <ul className="list-disc list-inside space-y-2">
+                    {summary.map((item, idx) => (
+                        <li key={idx} className="text-gray-700 dark:text-gray-300">
+                            {typeof item === 'string' ? item : JSON.stringify(item)}
+                        </li>
+                    ))}
+                </ul>
+            );
+        }
+
+        // If summary is an object, render each property as a section
+        if (typeof summary === 'object') {
+            const sections = Object.entries(summary).filter(([_, value]) => value !== null && value !== undefined);
+
+            if (sections.length === 0) {
+                return <p className="text-gray-500">No summary data available.</p>;
+            }
+
+            return (
+                <div className="space-y-4">
+                    {sections.map(([key, value]) => {
+                        // Format the key as a readable title
+                        const title = key
+                            .replace(/_/g, ' ')
+                            .replace(/([A-Z])/g, ' $1')
+                            .split(' ')
+                            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                            .join(' ')
+                            .trim();
+
+                        return (
+                            <div key={key} className="border-l-4 border-primary-400 pl-4">
+                                <h6 className="font-semibold text-gray-800 dark:text-gray-200 mb-2">{title}</h6>
+                                <div className="text-gray-700 dark:text-gray-300">
+                                    {typeof value === 'string' ? (
+                                        <p className="whitespace-pre-wrap">{value}</p>
+                                    ) : Array.isArray(value) ? (
+                                        <ul className="list-disc list-inside space-y-1">
+                                            {value.map((item, idx) => (
+                                                <li key={idx}>
+                                                    {typeof item === 'string' ? item :
+                                                        typeof item === 'object' && item.title ? item.title :
+                                                            typeof item === 'object' && item.name ? item.name :
+                                                                JSON.stringify(item)}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : typeof value === 'object' ? (
+                                        <pre className="text-sm bg-gray-100 dark:bg-slate-700 p-2 rounded overflow-auto">
+                                            {JSON.stringify(value, null, 2)}
+                                        </pre>
+                                    ) : (
+                                        <p>{String(value)}</p>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        // Fallback for any other type
+        return <div className="whitespace-pre-wrap">{String(summary)}</div>;
     };
 
     const renderResult = () => {
@@ -118,8 +211,8 @@ export default function AgentRunner({ agentType, agentName, repository, branch, 
                             </div>
                             <div className="p-4">
                                 {result.ai_summary.success ? (
-                                    <div className="bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/30 dark:to-blue-900/30 p-4 rounded-lg whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed">
-                                        {result.ai_summary.summary}
+                                    <div className="bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/30 dark:to-blue-900/30 p-4 rounded-lg text-gray-700 dark:text-gray-300 leading-relaxed">
+                                        {renderAISummary(result.ai_summary.summary)}
                                     </div>
                                 ) : (
                                     <div className="alert-warning">
